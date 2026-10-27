@@ -11,6 +11,7 @@
   const SCHEMA_VERSION = 1;
   const ACTIVE_DRIVE_ID = 'drive-central-texas';
   const ACTOR_ID = 'demo';
+  const INVENTORY_IMPORT_HEADERS = ['entry_mode','title','category','quantity','origin_location','current_location','condition','reading_level','decision','rejection_reason','notes'];
   const MASTER_DATA = Object.freeze({
     categories: [
       { value: 'storybooks', label: 'Storybooks' },
@@ -90,12 +91,27 @@
     };
   }
 
+  function createEmptyState(baseState = createSampleState()) {
+    const empty = clone(baseState);
+    empty.revision = Number(baseState.revision || 0) + 1;
+    empty.entries = [];
+    empty.boxes = [];
+    empty.boxItems = [];
+    empty.shipments = [];
+    empty.changeEvents = [];
+    return empty;
+  }
+
   // Domain validation component
   function validateStateEnvelope(value) {
     if (!value || typeof value !== 'object') throw new Error('Saved demo state is not an object.');
     if (value.schemaVersion !== SCHEMA_VERSION) throw new Error(`Unsupported schema version: ${value.schemaVersion}.`);
     const arrays = ['drives', 'locations', 'entries', 'boxes', 'boxItems', 'shipments', 'changeEvents'];
     arrays.forEach(key => { if (!Array.isArray(value[key])) throw new Error(`Saved demo state is missing ${key}.`); });
+    arrays.forEach(key => {
+      const ids = value[key].map(item => item?.id);
+      if (ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error(`${key} contains missing or duplicate IDs.`);
+    });
     if (!value.drives.some(drive => drive.id === ACTIVE_DRIVE_ID)) throw new Error('The active Texas demo drive is missing.');
     validateDomainState(value);
     return value;
@@ -107,20 +123,25 @@
     const entryIds = new Set(candidate.entries.map(entry => entry.id));
     const boxIds = new Set(candidate.boxes.map(box => box.id));
     const shipmentIds = new Set(candidate.shipments.map(shipment => shipment.id));
+    candidate.drives.forEach(drive => { if (!drive.name || !drive.partner_name || !drive.destination_description || Number.isNaN(Date.parse(drive.created_at))) throw new Error(`Drive ${drive.id} is invalid.`); });
+    const boxLabels = candidate.boxes.map(box => `${box.drive_id}:${String(box.label).toLowerCase()}`);
+    if (new Set(boxLabels).size !== boxLabels.length) throw new Error('Box labels must be unique within a drive.');
     const linkedShipmentIds = candidate.boxes.filter(box => box.shipment_id).map(box => box.shipment_id);
     if (new Set(linkedShipmentIds).size !== linkedShipmentIds.length) throw new Error('A shipment cannot belong to more than one box.');
     if (candidate.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.type === 'central' && location.active).length !== 1) throw new Error('The active drive must have exactly one central sorting location.');
-    candidate.locations.forEach(location => { if (!driveIds.has(location.drive_id)) throw new Error(`Location ${location.id} has an invalid drive.`); });
+    candidate.locations.forEach(location => { if (!driveIds.has(location.drive_id) || !location.name || !['collection', 'central'].includes(location.type) || typeof location.active !== 'boolean') throw new Error(`Location ${location.id} is invalid.`); });
     candidate.entries.forEach(entry => {
       const origin = byId(candidate.locations, entry.origin_location_id);
       const current = byId(candidate.locations, entry.current_location_id);
-      if (!driveIds.has(entry.drive_id) || !locationIds.has(entry.origin_location_id) || !locationIds.has(entry.current_location_id) || origin.drive_id !== entry.drive_id || current.drive_id !== entry.drive_id) throw new Error(`Inventory ${entry.id} has an invalid relationship.`);
+      if (!driveIds.has(entry.drive_id) || !locationIds.has(entry.origin_location_id) || !locationIds.has(entry.current_location_id) || origin.drive_id !== entry.drive_id || current.drive_id !== entry.drive_id || origin.type !== 'collection') throw new Error(`Inventory ${entry.id} has an invalid relationship.`);
+      if (!['title', 'batch'].includes(entry.entry_mode) || (entry.entry_mode === 'title' && !String(entry.title || '').trim())) throw new Error(`Inventory ${entry.id} has an invalid entry mode or title.`);
       if (!Number.isInteger(entry.quantity) || entry.quantity < 1) throw new Error('Inventory quantities must be positive whole numbers.');
       if (!MASTER_DATA.decisions.some(item => item.value === entry.decision)) throw new Error('Inventory has an invalid decision.');
       if (!MASTER_DATA.categories.some(item => item.value === entry.category)) throw new Error('Inventory has an invalid category.');
       if (!MASTER_DATA.conditions.some(item => item.value === entry.condition)) throw new Error('Inventory has an invalid condition.');
       if (!MASTER_DATA.readingLevels.some(item => item.value === entry.reading_level)) throw new Error('Inventory has an invalid reading level.');
       if (entry.decision === 'rejected' && !String(entry.rejection_reason || '').trim()) throw new Error('Rejected inventory requires a reason.');
+      if (Number.isNaN(Date.parse(entry.created_at)) || Number.isNaN(Date.parse(entry.updated_at))) throw new Error(`Inventory ${entry.id} has invalid dates.`);
     });
     candidate.boxes.forEach(box => {
       const total = candidate.boxItems.filter(item => item.box_id === box.id).reduce((sum, item) => sum + item.quantity, 0);
@@ -130,7 +151,7 @@
       if (box.status !== 'shipped' && box.shipment_id) throw new Error('Only a shipped box may reference a shipment.');
     });
     candidate.shipments.forEach(shipment => {
-      if (!driveIds.has(shipment.drive_id) || !/^\d{4}-\d{2}-\d{2}$/.test(shipment.shipped_date) || shipment.shipped_date > localDateString()) throw new Error('A shipment is invalid or future-dated.');
+      if (!driveIds.has(shipment.drive_id) || !/^\d{4}-\d{2}-\d{2}$/.test(shipment.shipped_date) || shipment.shipped_date > localDateString() || !shipment.destination || Number.isNaN(Date.parse(shipment.created_at))) throw new Error('A shipment is invalid or future-dated.');
     });
     candidate.boxItems.forEach(item => {
       const box = byId(candidate.boxes, item.box_id);
@@ -143,6 +164,8 @@
       if (allocated > entry.quantity) throw new Error(`Inventory ${entry.id} is overallocated.`);
       if (allocated && entry.decision !== 'accepted') throw new Error('Only accepted inventory may remain packed.');
     });
+    candidate.boxes.filter(box => box.shipment_id).forEach(box => { if (byId(candidate.shipments, box.shipment_id)?.drive_id !== box.drive_id) throw new Error('A box references a shipment from another drive.'); });
+    candidate.changeEvents.forEach(event => { if (!driveIds.has(event.drive_id) || !event.entity_type || !event.action || Number.isNaN(Date.parse(event.timestamp))) throw new Error(`Change event ${event.id} is invalid.`); });
     return candidate;
   }
 
@@ -150,11 +173,14 @@
   function createRepository(key) {
     let mode = 'browser';
     let memoryState = null;
+    let recoveryRaw = null;
     return {
       get mode() { return mode; },
+      get recoveryContent() { return recoveryRaw; },
       async load() {
+        let raw = null;
         try {
-          const raw = localStorage.getItem(key);
+          raw = localStorage.getItem(key);
           if (raw === null) {
             const seeded = createSampleState();
             localStorage.setItem(key, JSON.stringify(seeded));
@@ -162,6 +188,7 @@
           }
           return clone(validateStateEnvelope(JSON.parse(raw)));
         } catch (error) {
+          recoveryRaw = raw;
           mode = 'memory';
           memoryState = memoryState || createSampleState();
           throw Object.assign(new Error('Browser storage could not be loaded. Temporary-memory mode is active.'), { cause: error, fallbackState: clone(memoryState) });
@@ -181,6 +208,17 @@
           memoryState = candidate;
           throw Object.assign(new Error('Browser storage rejected the save. Changes remain available only until this tab closes.'), { cause: error, fallbackState: clone(candidate) });
         }
+      },
+      async replace(nextState) {
+        const candidate = clone(validateStateEnvelope(nextState));
+        try {
+          localStorage.setItem(key, JSON.stringify(candidate));
+          mode = 'browser'; memoryState = null; recoveryRaw = null;
+          return clone(candidate);
+        } catch (error) {
+          mode = 'memory'; memoryState = candidate;
+          throw Object.assign(new Error('Browser storage rejected the replacement. The imported state is temporary.'), { cause: error, fallbackState: clone(candidate) });
+        }
       }
     };
   }
@@ -188,6 +226,7 @@
   // Application state and DOM component registry
   const repository = createRepository(STORAGE_KEY);
   let state = createSampleState();
+  let staleTab = false;
 
   const elements = {
     banner: document.querySelector('#storage-banner'),
@@ -218,7 +257,10 @@
     locationForm: document.querySelector('#location-form'),
     inventoryModal: document.querySelector('#inventory-modal'),
     inventoryModalBody: document.querySelector('#inventory-modal-body'),
-    inventoryModalTitle: document.querySelector('#inventory-modal-title')
+    inventoryModalTitle: document.querySelector('#inventory-modal-title'),
+    importFile: document.querySelector('#import-json-file'),
+    importInventoryCsvFile: document.querySelector('#import-inventory-csv-file'),
+    downloadRecovery: document.querySelector('#download-recovery')
   };
 
   // Domain queries and derived metrics
@@ -227,11 +269,11 @@
   function allocationsForEntry(id) { return state.boxItems.filter(item => item.inventory_entry_id === id); }
   function boxQuantity(id) { return state.boxItems.filter(item => item.box_id === id).reduce((sum, item) => sum + item.quantity, 0); }
 
-  function calculateMetrics() {
-    const entries = state.entries.filter(entry => entry.drive_id === ACTIVE_DRIVE_ID);
-    const packed = state.boxItems.reduce((sum, item) => sum + item.quantity, 0);
-    const shippedBoxIds = new Set(state.boxes.filter(box => box.status === 'shipped').map(box => box.id));
-    const shipped = state.boxItems.filter(item => shippedBoxIds.has(item.box_id)).reduce((sum, item) => sum + item.quantity, 0);
+  function calculateMetrics(source = state) {
+    const entries = source.entries.filter(entry => entry.drive_id === ACTIVE_DRIVE_ID);
+    const packed = source.boxItems.reduce((sum, item) => sum + item.quantity, 0);
+    const shippedBoxIds = new Set(source.boxes.filter(box => box.status === 'shipped').map(box => box.id));
+    const shipped = source.boxItems.filter(item => shippedBoxIds.has(item.box_id)).reduce((sum, item) => sum + item.quantity, 0);
     return {
       received: entries.reduce((sum, entry) => sum + entry.quantity, 0),
       pending: entries.filter(entry => entry.decision === 'pending').reduce((sum, entry) => sum + entry.quantity, 0),
@@ -242,16 +284,149 @@
     };
   }
 
+  function downloadFile(filename, content, type) {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const anchor = document.createElement('a');
+    anchor.href = url; anchor.download = filename; document.body.append(anchor); anchor.click(); anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function safeCsvCell(value) {
+    let text = String(value ?? '');
+    if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+
+  function csvDocument(rows) {
+    return `\ufeff${rows.map(row => row.map(safeCsvCell).join(',')).join('\r\n')}`;
+  }
+
+  function downloadInventoryTemplate() {
+    downloadFile('donar-inventory-import-template.csv', csvDocument([INVENTORY_IMPORT_HEADERS]), 'text/csv;charset=utf-8');
+  }
+
+  function parseCsv(text) {
+    const rows = []; let row = [], cell = '', quoted = false;
+    const source = String(text).replace(/^\ufeff/, '');
+    for (let index = 0; index < source.length; index += 1) {
+      const character = source[index];
+      if (quoted) {
+        if (character === '"' && source[index + 1] === '"') { cell += '"'; index += 1; }
+        else if (character === '"') quoted = false;
+        else cell += character;
+      } else if (character === '"' && cell === '') quoted = true;
+      else if (character === ',') { row.push(cell); cell = ''; }
+      else if (character === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+      else if (character !== '\r') cell += character;
+    }
+    if (quoted) throw new Error('CSV contains an unclosed quoted field.');
+    if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(values => values.some(value => String(value).trim() !== ''));
+  }
+
+  function resolveMasterValue(items, rawValue, field, rowNumber) {
+    const normalized = String(rawValue || '').trim().toLowerCase();
+    const match = items.find(item => item.value.toLowerCase() === normalized || item.label.toLowerCase() === normalized);
+    if (!match) throw new Error(`Row ${rowNumber}: invalid ${field} "${rawValue}".`);
+    return match.value;
+  }
+
+  function resolveCsvLocation(rawValue, rowNumber, originOnly = false) {
+    const normalized = String(rawValue || '').trim().toLowerCase();
+    const location = state.locations.find(item => item.drive_id === ACTIVE_DRIVE_ID && item.active && (item.id.toLowerCase() === normalized || item.name.toLowerCase() === normalized));
+    if (!location || (originOnly && location.type !== 'collection')) throw new Error(`Row ${rowNumber}: invalid ${originOnly ? 'origin' : 'current'} location "${rawValue}".`);
+    return location;
+  }
+
+  function parseInventoryImport(text) {
+    const rows = parseCsv(text);
+    if (!rows.length) throw new Error('CSV is empty.');
+    const headers = rows[0].map(value => value.trim().toLowerCase());
+    if (headers.length !== INVENTORY_IMPORT_HEADERS.length || headers.some((header, index) => header !== INVENTORY_IMPORT_HEADERS[index])) throw new Error(`CSV headers must be exactly: ${INVENTORY_IMPORT_HEADERS.join(', ')}.`);
+    if (rows.length === 1) throw new Error('CSV has headers but no inventory rows.');
+    return rows.slice(1).map((values, index) => {
+      const rowNumber = index + 2;
+      if (values.length > headers.length) throw new Error(`Row ${rowNumber}: too many columns.`);
+      const record = Object.fromEntries(headers.map((header, column) => [header, String(values[column] ?? '').trim()]));
+      const mode = record.entry_mode.toLowerCase();
+      if (!['title', 'batch'].includes(mode)) throw new Error(`Row ${rowNumber}: entry_mode must be title or batch.`);
+      if (mode === 'title' && !record.title) throw new Error(`Row ${rowNumber}: title is required in title mode.`);
+      const quantity = Number(record.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1) throw new Error(`Row ${rowNumber}: quantity must be a positive whole number.`);
+      const origin = resolveCsvLocation(record.origin_location, rowNumber, true);
+      const current = record.current_location ? resolveCsvLocation(record.current_location, rowNumber) : origin;
+      const decision = resolveMasterValue(MASTER_DATA.decisions, record.decision, 'decision', rowNumber);
+      if (decision === 'rejected' && !record.rejection_reason) throw new Error(`Row ${rowNumber}: rejection_reason is required for rejected books.`);
+      const timestamp = nowIso();
+      return {
+        id: uid('entry'), drive_id: ACTIVE_DRIVE_ID, origin_location_id: origin.id, current_location_id: current.id,
+        entry_mode: mode, title: mode === 'title' ? record.title : '', category: resolveMasterValue(MASTER_DATA.categories, record.category, 'category', rowNumber), quantity,
+        condition: resolveMasterValue(MASTER_DATA.conditions, record.condition, 'condition', rowNumber), reading_level: resolveMasterValue(MASTER_DATA.readingLevels, record.reading_level, 'reading_level', rowNumber), decision,
+        rejection_reason: decision === 'rejected' ? record.rejection_reason : '', parent_entry_id: null, notes: record.notes,
+        version: 1, created_by: ACTOR_ID, created_at: timestamp, updated_at: timestamp
+      };
+    });
+  }
+
+  function openInventoryCsvPreview(entries) {
+    const books = entries.reduce((sum, entry) => sum + entry.quantity, 0);
+    const possibleDuplicates = entries.filter(entry => entry.entry_mode === 'title' && state.entries.some(existing => existing.entry_mode === 'title' && existing.origin_location_id === entry.origin_location_id && existing.title.trim().toLowerCase() === entry.title.trim().toLowerCase())).length;
+    showBoxModal('Append inventory CSV?', 'Validated CSV preview', `<div class="notice">This appends new, unpacked inventory to the current drive. Existing rows are not replaced.</div><div class="location-admin-row"><span>Rows to add</span><strong>${entries.length}</strong></div><div class="location-admin-row"><span>Physical books</span><strong>${books}</strong></div><div class="location-admin-row"><span>Possible repeated titles</span><strong>${possibleDuplicates}</strong></div><div class="form-actions"><button class="button" type="button" id="cancel-csv-import">Cancel</button><button class="button primary" type="button" id="confirm-csv-import">Append inventory</button></div>`);
+    document.querySelector('#cancel-csv-import').addEventListener('click', closeBoxModal);
+    document.querySelector('#confirm-csv-import').addEventListener('click', async event => {
+      event.target.disabled = true;
+      const candidate = clone(state); candidate.entries.push(...clone(entries)); candidate.revision += 1;
+      candidate.changeEvents.push({ id: uid('event'), drive_id: ACTIVE_DRIVE_ID, entity_type: 'inventory_import', entity_id: ACTIVE_DRIVE_ID, action: 'csv_imported', before_values: null, after_values: { rows: entries.length, books }, actor_id: ACTOR_ID, timestamp: nowIso() });
+      if (await commitCandidate(candidate, `${entries.length} inventory rows imported.`)) { closeBoxModal(); switchView('inventory'); }
+    });
+  }
+
+  function exportInventoryCsv() {
+    const rows = [['Entry ID','Origin','Current location','Title','Category','Condition','Reading level','Decision','Rejection reason','Received quantity','Packed quantity','Shipped quantity','Box labels']];
+    state.entries.forEach(entry => {
+      const allocations = allocationsForEntry(entry.id), shippedAllocations = allocations.filter(item => byId(state.boxes, item.box_id)?.status === 'shipped');
+      rows.push([entry.id, locationName(entry.origin_location_id), locationName(entry.current_location_id), entry.title, entry.category, entry.condition, entry.reading_level, entry.decision, entry.rejection_reason, entry.quantity, allocations.reduce((n,item)=>n+item.quantity,0), shippedAllocations.reduce((n,item)=>n+item.quantity,0), allocations.map(item => byId(state.boxes,item.box_id)?.label).filter(Boolean).join(' | ')]);
+    });
+    downloadFile('donar-inventory.csv', csvDocument(rows), 'text/csv;charset=utf-8');
+  }
+
+  function exportAllocationsCsv() {
+    const rows = [['Allocation ID','Box label','Entry ID','Title or category','Allocated quantity','Box status']];
+    state.boxItems.forEach(item => { const box=byId(state.boxes,item.box_id), entry=byId(state.entries,item.inventory_entry_id); rows.push([item.id,box?.label,entry?.id,entry?.title||entry?.category,item.quantity,box?.status]); });
+    downloadFile('donar-box-allocations.csv', csvDocument(rows), 'text/csv;charset=utf-8');
+  }
+
+  function exportJson() {
+    downloadFile('donar-full-backup.json', JSON.stringify({ ...clone(state), exportedAt: nowIso() }, null, 2), 'application/json');
+  }
+
+  function runAcceptanceChecks(candidate = state) {
+    validateStateEnvelope(clone(candidate));
+    const metrics = calculateMetrics(candidate);
+    const checks = [
+      ['Received reconciles with decisions', metrics.received === metrics.pending + metrics.accepted + metrics.rejected],
+      ['Shipped ≤ packed', metrics.shipped <= metrics.packed],
+      ['Packed ≤ accepted', metrics.packed <= metrics.accepted],
+      ['Accepted ≤ received', metrics.accepted <= metrics.received],
+      ['JSON round trip parses', Boolean(JSON.parse(JSON.stringify(candidate)))],
+      ['One active central sorting location', candidate.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.type === 'central' && location.active).length === 1],
+      ['CSV formula prefixes are neutralized', safeCsvCell('=SUM(A1:A2)').startsWith('"\'')],
+      ['HTML-like text is escaped', escapeHtml('<script>') === '&lt;script&gt;']
+    ];
+    if (checks.some(([,passed]) => !passed)) throw new Error('One or more acceptance checks failed.');
+    return checks;
+  }
+
   function formatAction(event) {
-    const labels = { shipped: 'Box marked shipped', shipment_reversed: 'Shipment reversed', box_created: 'New box created', packed: 'Books packed', unpacked: 'Books unpacked', box_ready: 'Box verified and ready', classified: 'The Wild Robot marked accepted', setup_updated: 'Drive setup updated', received: 'New books received', updated: 'Inventory updated', split_and_updated: 'Inventory split and updated', location_created: 'Collection location added' };
+    const labels = { csv_imported: 'Inventory CSV imported', shipped: 'Box marked shipped', shipment_reversed: 'Shipment reversed', box_created: 'New box created', packed: 'Books packed', unpacked: 'Books unpacked', box_ready: 'Box verified and ready', classified: 'The Wild Robot marked accepted', setup_updated: 'Drive setup updated', received: 'New books received', updated: 'Inventory updated', split_and_updated: 'Inventory split and updated', location_created: 'Collection location added' };
     return labels[event.action] || `${event.entity_type} ${event.action.replaceAll('_', ' ')}`;
   }
 
   // View-rendering components
   function renderStorageStatus() {
     const temporary = repository.mode === 'memory';
-    elements.storageDot.classList.toggle('warning', temporary);
-    elements.storageMessage.textContent = temporary
+    elements.storageDot.classList.toggle('warning', temporary || staleTab);
+    elements.storageMessage.textContent = staleTab ? 'Another tab changed this demo — reload before editing' : temporary
       ? 'Demo — temporary-memory mode; changes disappear when this tab closes'
       : 'Demo — fictional data stored only in this browser';
   }
@@ -303,6 +478,7 @@
     elements.driveForm.elements.destination_description.value = drive.destination_description;
     elements.driveForm.elements.guidance_text.value = drive.guidance_text;
     elements.setupLocationList.innerHTML = state.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.active).map(location => `<div class="location-admin-row"><div><strong>${escapeHtml(location.name)}</strong><div class="muted">${location.type === 'central' ? 'Central sorting location' : 'Collection location'}</div></div><span class="badge ${location.type === 'central' ? 'accepted' : 'pending'}">${location.type}</span></div>`).join('');
+      elements.downloadRecovery.hidden = !repository.recoveryContent;
   }
 
   function replaceOptions(select, items, placeholder) {
@@ -356,6 +532,7 @@
   }
 
   async function commitCandidate(candidate, successMessage) {
+    if (staleTab) { showError('This tab is stale because another tab changed the data. Reload before editing.'); return false; }
     elements.appError.hidden = true;
     try {
       validateDomainState(candidate);
@@ -517,6 +694,47 @@
     document.querySelector('#print-manifest').addEventListener('click', () => { document.body.classList.add('printing-manifest'); window.print(); });
   }
 
+  async function replaceCompleteState(candidate, message) {
+    if (staleTab) { showError('Reload this stale tab before replacing local data.'); return false; }
+    try {
+      validateStateEnvelope(candidate);
+      state = await repository.replace(candidate);
+      staleTab = false;
+      closeBoxModal(); render(); showToast(message);
+      return true;
+    } catch (error) {
+      if (error.fallbackState) state = error.fallbackState;
+      renderStorageStatus(); showError(error.message); return false;
+    }
+  }
+
+  function openResetDialog(kind) {
+    const isEmpty = kind === 'empty';
+    showBoxModal(isEmpty ? 'Start with an empty drive?' : 'Restore fictional samples?', 'Replace complete state', `<div class="notice error-panel">This replaces every current entry, box, shipment, and history event. Export a backup first if you may need this data again.</div><div class="form-actions"><button class="button" type="button" id="backup-before-replace">Export current backup</button><button class="button" type="button" id="cancel-replace">Cancel</button><button class="button primary" type="button" id="confirm-replace">${isEmpty ? 'Start empty' : 'Reset samples'}</button></div>`);
+    document.querySelector('#backup-before-replace').addEventListener('click', exportJson);
+    document.querySelector('#cancel-replace').addEventListener('click', closeBoxModal);
+    document.querySelector('#confirm-replace').addEventListener('click', async event => { event.target.disabled = true; await replaceCompleteState(isEmpty ? createEmptyState(state) : createSampleState(), isEmpty ? 'Empty walkthrough ready.' : 'Sample data restored.'); });
+  }
+
+  function openImportPreview(candidate) {
+    const drive = byId(candidate.drives, ACTIVE_DRIVE_ID), metrics = calculateMetrics(candidate);
+    showBoxModal('Import complete backup?', 'Validated JSON preview', `<div class="notice">Import replaces the complete current state; merge is outside this MVP.</div><div class="location-admin-row"><span>Drive</span><strong>${escapeHtml(drive.name)}</strong></div><div class="location-admin-row"><span>Inventory rows</span><strong>${candidate.entries.length}</strong></div><div class="location-admin-row"><span>Physical books</span><strong>${metrics.received}</strong></div><div class="location-admin-row"><span>Boxes</span><strong>${candidate.boxes.length}</strong></div><div class="location-admin-row"><span>Shipments</span><strong>${candidate.shipments.length}</strong></div><div class="form-actions"><button class="button" type="button" id="backup-before-import">Export current backup</button><button class="button" type="button" id="cancel-import">Cancel</button><button class="button primary" type="button" id="confirm-import">Replace and import</button></div>`);
+    document.querySelector('#backup-before-import').addEventListener('click', exportJson);
+    document.querySelector('#cancel-import').addEventListener('click', closeBoxModal);
+    document.querySelector('#confirm-import').addEventListener('click', async event => {
+      if (!window.confirm('Replace all current local demo data with this validated backup?')) return;
+      event.target.disabled = true; await replaceCompleteState(candidate, 'Complete backup imported.');
+    });
+  }
+
+  function showAcceptanceResults() {
+    try {
+      const checks = runAcceptanceChecks();
+      showBoxModal('Acceptance checks passed', 'Local verification', `<div class="allocation-list">${checks.map(([label, passed]) => `<div class="allocation-row"><strong>${escapeHtml(label)}</strong><span class="badge ${passed ? 'accepted' : 'rejected'}">${passed ? 'Pass' : 'Fail'}</span></div>`).join('')}</div><div class="form-actions"><button class="button primary" type="button" id="close-checks">Done</button></div>`);
+      document.querySelector('#close-checks').addEventListener('click', closeBoxModal);
+    } catch (error) { showError(error.message); }
+  }
+
   function openInventoryModal(entryId) {
     const entry = byId(state.entries, entryId);
     if (!entry) return;
@@ -652,9 +870,46 @@
   elements.boxModal.addEventListener('click', event => { if (event.target === elements.boxModal) closeBoxModal(); });
   document.addEventListener('keydown', event => { if (event.key === 'Escape') { if (!elements.inventoryModal.hidden) closeInventoryModal(); if (!elements.boxModal.hidden) closeBoxModal(); } });
   window.addEventListener('afterprint', () => document.body.classList.remove('printing-manifest'));
+  document.querySelector('#download-inventory-template').addEventListener('click', downloadInventoryTemplate);
+  document.querySelector('#upload-inventory-csv').addEventListener('click', () => elements.importInventoryCsvFile.click());
+  document.querySelector('#export-inventory-csv').addEventListener('click', exportInventoryCsv);
+  document.querySelector('#export-allocations-csv').addEventListener('click', exportAllocationsCsv);
+  document.querySelector('#export-json').addEventListener('click', exportJson);
+  document.querySelector('#import-json').addEventListener('click', () => elements.importFile.click());
+  document.querySelector('#run-self-checks').addEventListener('click', showAcceptanceResults);
+  document.querySelector('#start-empty').addEventListener('click', () => openResetDialog('empty'));
+  document.querySelector('#reset-sample').addEventListener('click', () => openResetDialog('sample'));
+  elements.downloadRecovery.addEventListener('click', () => { if (repository.recoveryContent) downloadFile('donar-malformed-storage.txt', repository.recoveryContent, 'text/plain;charset=utf-8'); });
+  elements.importInventoryCsvFile.addEventListener('change', async () => {
+    const file = elements.importInventoryCsvFile.files?.[0];
+    elements.importInventoryCsvFile.value = '';
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showError('CSV import rejected: the demo limit is 5 MB.'); return; }
+    try { openInventoryCsvPreview(parseInventoryImport(await file.text())); }
+    catch (error) { showError(`CSV import rejected without changing current data: ${error.message}`); }
+  });
+  elements.importFile.addEventListener('change', async () => {
+    const file = elements.importFile.files?.[0];
+    elements.importFile.value = '';
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showError('Import rejected: the demo limit is 5 MB.'); return; }
+    try {
+      const parsed = JSON.parse(await file.text());
+      delete parsed.exportedAt;
+      const candidate = clone(validateStateEnvelope(parsed));
+      runAcceptanceChecks(candidate);
+      openImportPreview(candidate);
+    } catch (error) { showError(`Import rejected without changing current data: ${error.message}`); }
+  });
+  window.addEventListener('storage', event => {
+    if (event.key === STORAGE_KEY) {
+      staleTab = true; renderStorageStatus(); showError('Another tab changed this demo. This tab is now read-only; reload before editing.');
+    }
+  });
 
   elements.driveForm.addEventListener('submit', async event => {
     event.preventDefault();
+    if (staleTab) { showError('Reload this stale tab before editing.'); return; }
     const form = new FormData(elements.driveForm);
     const name = String(form.get('name') || '').trim();
     const partner = String(form.get('partner_name') || '').trim();

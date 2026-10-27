@@ -27,7 +27,7 @@ The MVP remains vanilla JavaScript with no package installation, framework, bund
 
 Categories, conditions, reading levels, and decisions are defined once as master data in `app.js`. Default Austin-area locations are predefined there as fictional seeds. Origin dropdowns use active collection locations, while current-location dropdowns use every active location saved for the drive.
 
-## Phase 3 walkthrough
+## Phase 4 walkthrough
 
 1. Review reconciled sample counts on the Dashboard.
 2. Open Receive and add a category batch or individual title.
@@ -42,6 +42,20 @@ Categories, conditions, reading levels, and decisions are defined once as master
 11. Preview and print the box manifest.
 12. Record a simulated shipment and confirm that its contents become locked.
 13. Reverse the shipment with a reason, correct the box, and verify it again.
+14. Export inventory and box-allocation CSV reports.
+15. Export a complete JSON backup, start empty, then import the backup and confirm all counts and shipments return.
+16. Try importing malformed or overallocated JSON and confirm current data remains unchanged.
+17. Open the same origin in another tab, change data there, and confirm the stale tab blocks further saves.
+18. Run the built-in acceptance checks from Setup.
+19. Download the inventory CSV template, fill it locally, upload it, review the preview, and append the validated rows.
+
+### Inventory CSV template
+
+The template columns are:
+
+`entry_mode,title,category,quantity,origin_location,current_location,condition,reading_level,decision,rejection_reason,notes`
+
+Use exact active location names or IDs. `current_location` may be blank to default to the origin. Master-data values may use their stored value or displayed label. CSV import appends inventory only; it does not import packing or shipment records.
 
 All included records and shipment actions are fictional.
 
@@ -50,7 +64,7 @@ All included records and shipment actions are fictional.
 - [x] Phase 1 — application skeleton, Texas sample state, repository boundary, and reload persistence
 - [x] Phase 2 — receiving, sorting, transfers, splits, filters, and reconciled metrics
 - [x] Phase 3 — packing, manifests, shipment locking, and reversal workflow
-- [ ] Phase 4 — validated imports/exports, storage recovery, accessibility, and acceptance checks
+- [x] Phase 4 — validated imports/exports, storage recovery, accessibility, and acceptance checks
 - [ ] Phase 5 — organizer walkthrough and feedback capture
 
 ## Database migration after MVP approval

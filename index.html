@@ -27,13 +27,13 @@
         <button class="nav-button" data-view="boxes"><i class="nav-icon">□</i>Boxes</button>
         <button class="nav-button" data-view="setup"><i class="nav-icon">⚙</i>Setup</button>
       </nav>
-      <div class="phase-label">Local MVP · Phase 3<br>Packing and shipping</div>
+      <div class="phase-label">Local MVP · Phase 4<br>Demo controls and verification</div>
     </aside>
 
     <main>
       <header class="topbar">
         <div class="drive-heading"><span id="topbar-drive-name">Loading drive…</span><small id="topbar-drive-region">Austin–Leander, Texas</small></div>
-        <span class="phase-pill">Phase 3</span>
+        <span class="phase-pill">Phase 4</span>
       </header>
 
       <div id="app-error" class="notice error-panel" hidden></div>
@@ -122,6 +122,26 @@
             <div class="field"><label for="new-location-type">Location type</label><select id="new-location-type" name="type"><option value="collection">Collection</option><option value="central">Central sorting</option></select></div>
             <div class="field full"><button class="button" id="add-location" type="submit">Add location</button></div>
           </form>
+        </article>
+        <article class="card" style="max-width:780px;margin-top:18px">
+          <div class="card-header"><h2>Demo data and reports</h2><p>Export reports, back up the complete state, restore a backup, or prepare an empty walkthrough.</p></div>
+          <div class="box-actions">
+            <button class="button" id="download-inventory-template" type="button">Download inventory template</button>
+            <button class="button" id="upload-inventory-csv" type="button">Upload filled inventory CSV</button>
+            <button class="button" id="export-inventory-csv" type="button">Inventory CSV</button>
+            <button class="button" id="export-allocations-csv" type="button">Box allocations CSV</button>
+            <button class="button" id="export-json" type="button">Full JSON backup</button>
+            <button class="button" id="import-json" type="button">Import JSON</button>
+            <button class="button" id="run-self-checks" type="button">Run acceptance checks</button>
+          </div>
+          <p class="muted" style="margin:12px 0 0">CSV intake appends unpacked inventory. Use exact location names or IDs and the predefined category, condition, reading-level, and decision values.</p>
+          <input id="import-inventory-csv-file" type="file" accept="text/csv,.csv" hidden>
+          <input id="import-json-file" type="file" accept="application/json,.json" hidden>
+          <div class="form-actions">
+            <button class="button" id="start-empty" type="button">Start empty</button>
+            <button class="button" id="reset-sample" type="button">Reset sample data</button>
+            <button class="button" id="download-recovery" type="button" hidden>Download malformed saved data</button>
+          </div>
         </article>
       </section>
     </main>
