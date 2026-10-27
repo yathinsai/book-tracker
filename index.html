@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Local MVP for tracking a community book drive.">
+  <title>Donation drive tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="storage-banner" id="storage-banner" role="status">
+    <span class="status-dot" id="storage-dot"></span>
+    <span id="storage-message">Demo — checking browser storage…</span>
+  </div>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">D</div>
+        <div><strong>DONAR</strong><small>Book Drive Tracker</small></div>
+      </div>
+      <nav class="nav-list" aria-label="Main navigation">
+        <button class="nav-button" data-view="dashboard" aria-current="page"><i class="nav-icon">⌂</i>Dashboard</button>
+        <button class="nav-button" data-view="inventory"><i class="nav-icon">▤</i>Inventory</button>
+        <button class="nav-button" data-view="receive"><i class="nav-icon">＋</i>Receive</button>
+        <button class="nav-button" data-view="boxes"><i class="nav-icon">□</i>Boxes</button>
+        <button class="nav-button" data-view="setup"><i class="nav-icon">⚙</i>Setup</button>
+      </nav>
+      <div class="phase-label">Local MVP · Phase 3<br>Packing and shipping</div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div class="drive-heading"><span id="topbar-drive-name">Loading drive…</span><small id="topbar-drive-region">Austin–Leander, Texas</small></div>
+        <span class="phase-pill">Phase 3</span>
+      </header>
+
+      <div id="app-error" class="notice error-panel" hidden></div>
+
+      <section class="view active" id="dashboard-view" aria-labelledby="dashboard-title">
+        <div class="page-heading">
+          <div><p class="eyebrow">Overview</p><h1 id="dashboard-title">Community drive dashboard</h1><p class="page-description">Live totals from the fictional Texas demo stored in this browser.</p></div>
+          <button class="button primary" data-open-view="receive">+ Receive books</button>
+        </div>
+        <div class="stats" id="metric-cards"></div>
+        <div class="dashboard-grid">
+          <article class="card">
+            <div class="card-header"><h2>Accepted-book goal</h2><p>Progress across all Texas collection locations</p></div>
+            <div class="progress-labels"><strong id="goal-label">—</strong><span id="goal-percent">—</span></div>
+            <div class="progress-track" aria-label="Accepted-book goal progress"><div class="progress-bar" id="goal-bar"></div></div>
+            <div class="card-header" style="margin-top:26px"><h2>Collection locations</h2></div>
+            <div class="location-list" id="location-summary"></div>
+          </article>
+          <article class="card">
+            <div class="card-header"><h2>Recent activity</h2><p>Local demo history</p></div>
+            <div class="activity-list" id="activity-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="inventory-view" aria-labelledby="inventory-title">
+        <div class="page-heading"><div><p class="eyebrow">Books</p><h1 id="inventory-title">Inventory</h1><p class="page-description">Filter, transfer, split, and classify every group of books.</p></div><button class="button primary" data-open-view="receive">+ Receive books</button></div>
+        <div class="toolbar">
+          <input id="inventory-search" type="search" placeholder="Search title or category…" aria-label="Search inventory">
+          <select id="filter-origin" aria-label="Filter by origin"><option value="">All origins</option></select>
+          <select id="filter-current" aria-label="Filter by current location"><option value="">All current locations</option></select>
+          <select id="filter-reading" aria-label="Filter by reading level"><option value="">All reading levels</option></select>
+          <select id="filter-decision" aria-label="Filter by decision"><option value="">All decisions</option><option value="pending">Pending</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option></select>
+          <select id="filter-packing" aria-label="Filter by packing state"><option value="">All packing states</option><option value="unpacked">Unpacked</option><option value="partial">Partially packed</option><option value="packed">Fully packed</option></select>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Title / category</th><th>Origin</th><th>Current location</th><th>Quantity</th><th>Decision</th><th>Action</th></tr></thead><tbody id="inventory-table"></tbody></table></div>
+      </section>
+
+      <section class="view" id="receive-view" aria-labelledby="receive-title">
+        <div class="page-heading"><div><p class="eyebrow">New intake</p><h1 id="receive-title">Receive books</h1><p class="page-description">Record a fast category batch or an individual title.</p></div></div>
+        <article class="card" style="max-width:780px">
+          <form id="receive-form" novalidate>
+            <div class="form-grid">
+              <div class="field full"><label>Entry type</label><div class="mode-toggle"><button class="mode-button active" type="button" data-entry-mode="batch">Category batch</button><button class="mode-button" type="button" data-entry-mode="title">Individual title</button></div></div>
+              <div class="field full" id="receive-title-field" hidden><label for="receive-title-input">Book title</label><input id="receive-title-input" name="title" maxlength="180" placeholder="e.g. The Wild Robot"></div>
+              <div class="field"><label for="receive-category">Category</label><select id="receive-category" name="category"></select></div>
+              <div class="field"><label for="receive-quantity">Quantity</label><input id="receive-quantity" name="quantity" type="number" min="1" step="1" value="1" required></div>
+              <div class="field"><label for="receive-origin">Origin site</label><select id="receive-origin" name="origin_location_id" required></select></div>
+              <div class="field"><label for="receive-condition">Condition</label><select id="receive-condition" name="condition"></select></div>
+              <div class="field"><label for="receive-reading">Reading level</label><select id="receive-reading" name="reading_level"></select></div>
+              <div class="field"><label for="receive-decision">Initial decision</label><select id="receive-decision" name="decision"></select></div>
+              <div class="field full" id="receive-rejection-field" hidden><label for="receive-rejection">Rejection reason</label><input id="receive-rejection" name="rejection_reason" maxlength="240" placeholder="Required for rejected books"></div>
+              <div class="field full"><label for="receive-notes">Notes <span class="muted">(optional)</span></label><textarea id="receive-notes" name="notes" maxlength="1000"></textarea></div>
+            </div>
+            <div class="form-actions"><button class="button" type="button" data-open-view="inventory">Cancel</button><button class="button" type="submit" data-save-mode="continue">Save and add another</button><button class="button primary" id="receive-save" type="submit" data-save-mode="close">Save books</button></div>
+          </form>
+        </article>
+      </section>
+
+      <section class="view" id="boxes-view" aria-labelledby="boxes-title">
+        <div class="page-heading"><div><p class="eyebrow">Fulfillment</p><h1 id="boxes-title">Boxes & shipping</h1><p class="page-description">Pack accepted books, verify physical counts, and record simulated handoff.</p></div><button class="button primary" id="new-box" type="button">+ New box</button></div>
+        <div class="notice">Only accepted books at the central sorting location can be packed. Shipped contents remain locked until a logged reversal.</div>
+        <div class="box-grid" id="box-grid"></div>
+      </section>
+
+      <section class="view" id="setup-view" aria-labelledby="setup-title">
+        <div class="page-heading"><div><p class="eyebrow">Drive controls</p><h1 id="setup-title">Drive setup</h1><p class="page-description">Edit drive details and manage Texas collection locations.</p></div></div>
+        <div class="notice">This is fictional demo data stored only in this browser. It is not shared with another person or device.</div>
+        <article class="card" style="max-width:780px">
+          <form id="drive-form" novalidate>
+            <div class="form-grid">
+              <div class="field full"><label for="drive-name">Drive name</label><input id="drive-name" name="name" required maxlength="100"></div>
+              <div class="field"><label for="partner-name">Partner name</label><input id="partner-name" name="partner_name" required maxlength="120"></div>
+              <div class="field"><label for="goal">Accepted-book goal</label><input id="goal" name="goal_accepted_quantity" type="number" min="1" step="1"></div>
+              <div class="field full"><label for="destination">Destination description</label><input id="destination" name="destination_description" required maxlength="180"></div>
+              <div class="field full"><label for="guidance">Confirmed guidance</label><textarea id="guidance" name="guidance_text" maxlength="1200"></textarea></div>
+            </div>
+            <div class="form-actions"><button class="button primary" id="save-drive" type="submit">Save drive setup</button></div>
+          </form>
+        </article>
+        <article class="card" style="max-width:780px;margin-top:18px">
+          <div class="card-header"><h2>Locations</h2><p>One central sorting hub and any number of collection locations.</p></div>
+          <div id="setup-location-list"></div>
+          <form id="location-form" class="form-grid" style="margin-top:18px" novalidate>
+            <div class="field"><label for="new-location-name">New location name</label><input id="new-location-name" name="name" required maxlength="120" placeholder="e.g. Round Rock Collection"></div>
+            <div class="field"><label for="new-location-type">Location type</label><select id="new-location-type" name="type"><option value="collection">Collection</option><option value="central">Central sorting</option></select></div>
+            <div class="field full"><button class="button" id="add-location" type="submit">Add location</button></div>
+          </form>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal-backdrop" id="inventory-modal" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="inventory-modal-title">
+      <div class="modal-header"><div><p class="eyebrow">Inventory action</p><h2 id="inventory-modal-title">Manage inventory</h2></div><button class="icon-button" id="close-inventory-modal" type="button" aria-label="Close">×</button></div>
+      <div id="inventory-modal-body"></div>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="box-modal" hidden>
+    <section class="modal box-modal" role="dialog" aria-modal="true" aria-labelledby="box-modal-title">
+      <div class="modal-header no-print"><div><p class="eyebrow" id="box-modal-eyebrow">Box action</p><h2 id="box-modal-title">Manage box</h2></div><button class="icon-button" id="close-box-modal" type="button" aria-label="Close">×</button></div>
+      <div id="box-modal-body"></div>
+    </section>
+  </div>
+
+  <script defer src="app.js"></script>
+</body>
+</html>
