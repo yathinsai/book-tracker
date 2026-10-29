@@ -4,15 +4,65 @@ Interactive local MVP for receiving, reviewing, packing, and shipping fictional 
 
 ## Run locally
 
-From this directory:
+### Prerequisite
+
+The app has no package dependencies or build step. You only need Python 3 to serve the static files:
 
 ```bash
-python3 -m http.server 8000
+python3 --version
 ```
 
-Then open [http://localhost:8000](http://localhost:8000).
+### Start the app
 
-No installation or build step is required. Data is stored in browser `localStorage` under `bookDrive.demo.v1`.
+Open a terminal and run:
+
+```bash
+cd /Users/rajavk/yathin/book-tracker
+python3 -m http.server 8080 --bind 127.0.0.1
+```
+
+Then open [http://127.0.0.1:8080](http://127.0.0.1:8080).
+
+The terminal should remain open while testing. Stop the server with `Ctrl+C`.
+
+### If port 8080 is already in use
+
+Choose another port, for example:
+
+```bash
+python3 -m http.server 8081 --bind 127.0.0.1
+```
+
+Then open [http://127.0.0.1:8081](http://127.0.0.1:8081). Browser storage is isolated by origin and port, so data saved on port 8080 will not automatically appear on port 8081.
+
+To identify a process already using port 8080 on macOS:
+
+```bash
+lsof -nP -iTCP:8080 -sTCP:LISTEN
+```
+
+### Verify the server
+
+In another terminal:
+
+```bash
+curl -I http://127.0.0.1:8080/
+```
+
+A successful response includes `HTTP/1.0 200 OK` or `HTTP/1.1 200 OK`.
+
+### Optional source checks
+
+```bash
+node --check app.js
+git diff --check
+```
+
+Node.js is only needed for the optional JavaScript syntax check; it is not required to run the app.
+
+Do not rely on opening `index.html` directly with a `file://` URL. Browser asset loading, download, and storage behavior can differ. Serve the project directory over localhost instead.
+
+Data is stored in browser `localStorage` under `bookDrive.demo.v1` for the exact browser origin and port.
 
 The included fictional sample drive covers Austin, Leander, Cedar Park, and a North Austin sorting hub.
 
