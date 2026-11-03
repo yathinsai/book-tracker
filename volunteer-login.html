@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BookTracker volunteer sign in</title>
+  <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#e9f1ef;color:#15343a;font:16px system-ui,sans-serif}.card{width:min(390px,calc(100% - 40px));padding:30px;border-radius:18px;background:#fff;box-shadow:0 20px 50px #15343a22}label{display:grid;gap:7px;margin:14px 0;font-weight:700}input{padding:11px;border:1px solid #aabfc0;border-radius:8px;font:inherit}button{width:100%;padding:12px;border:0;border-radius:8px;background:#17695f;color:#fff;font-weight:700;font:inherit;cursor:pointer}.hint{padding:10px;border-radius:8px;background:#f7f1d8;font-size:.9rem}.error{min-height:1.25em;color:#a21f1f}.links{margin-top:18px;text-align:center}.links a{color:#17695f}</style>
+</head>
+<body data-login-role="volunteer">
+  <main class="card">
+    <p>BookTracker</p>
+    <h1>Volunteer sign in</h1>
+    <p class="hint" id="login-hint">Local demo: use <code>agent</code> / <code>agent</code>. Do not use this password for a real project.</p>
+    <form id="login-form">
+      <label id="identity-label">Username<input name="identity" autocomplete="username" required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <p class="error" id="login-error" role="alert"></p>
+      <button type="submit">Sign in as volunteer</button>
+    </form>
+    <p class="links"><a href="admin-login.html">Admin sign in</a></p>
+  </main>
+  <!-- runtime-config -->
+  <script src="feature-flags.js"></script>
+  <script defer src="login.js"></script>
+</body>
+</html>

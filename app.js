@@ -8,6 +8,7 @@
 
   // Configuration and shared utilities
   const STORAGE_KEY = 'bookDrive.demo.v1';
+  const FEATURE_DB = window.FEATURE_DB === true;
   const SCHEMA_VERSION = 1;
   const ACTIVE_DRIVE_ID = 'drive-central-texas';
   const ACTOR_ID = 'demo';
@@ -426,7 +427,9 @@
   function renderStorageStatus() {
     const temporary = repository.mode === 'memory';
     elements.storageDot.classList.toggle('warning', temporary || staleTab);
-    elements.storageMessage.textContent = staleTab ? 'Another tab changed this demo — reload before editing' : temporary
+    elements.storageMessage.textContent = FEATURE_DB
+      ? 'Database authentication preview is enabled — inventory still uses local demo storage until the repository adapter is deployed'
+      : staleTab ? 'Another tab changed this demo — reload before editing' : temporary
       ? 'Demo — temporary-memory mode; changes disappear when this tab closes'
       : 'Demo — fictional data stored only in this browser';
   }

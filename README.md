@@ -75,6 +75,52 @@ The included fictional sample drive covers Austin, Leander, Cedar Park, and a No
 
 The MVP remains vanilla JavaScript with no package installation, framework, bundler, or frontend build step.
 
+## Shared-pilot foundation
+
+The local demo remains the default application mode. The initial Supabase schema, security foundation, and static-hosting build scaffold now live in `supabase/`, `scripts/`, and `package.json`; they do not connect the current UI to Supabase yet.
+
+For the complete offline installation, local test, hosted-project link, migration, and rollback-safety instructions, see [SUPABASE_OFFLINE_SETUP.md](SUPABASE_OFFLINE_SETUP.md).
+
+To prepare the local database after installing the Supabase CLI and Docker Desktop:
+
+```bash
+supabase start
+supabase db reset
+```
+
+Do not load the fictional demo inventory into a hosted project. Future migrations will add the transactional RPC functions and the Supabase repository adapter described in [SUPABASE_PLAN.md](SUPABASE_PLAN.md).
+
+To create a deployment-ready static bundle after a project exists:
+
+```bash
+SUPABASE_URL=https://your-project-ref.supabase.co \
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key \
+npm run build
+```
+
+For the local browser-only MVP, no environment variables are needed:
+
+```bash
+npm run build
+npm run dev
+```
+
+`npm run dev` builds and serves the static bundle at `http://127.0.0.1:8080`; `npm run build` writes that bundle to `dist/`.
+
+For a single local setting used by both commands, copy `.env.example` to `.env`, then set `FEATURE_DB=false` for the demo or `FEATURE_DB=true` plus the Supabase URL and publishable key for database-auth mode. `npm run dev` builds `dist/` from that same `.env` before serving it.
+
+The generated files are written to `dist/`, which is intentionally ignored by Git. The browser-safe publishable key is included in that build; never put a Supabase secret key or database password in these variables.
+
+### Node.js connector placeholders
+
+Node-side Supabase configuration and connector placeholders are in `src/config/` and `src/connectors/`. Copy `.env.example` to `.env` only for trusted local Node.js work. The static browser app must use the publishable key and RLS; it must never import or receive `SUPABASE_SECRET_KEY`.
+
+`FEATURE_DB` defaults to `false`, retaining the browser-only MVP. A static build can set `FEATURE_DB=true` to enable the Supabase Auth shell and app-admin invitation interface, but inventory CRUD remains local until the transactional RPC and Supabase repository adapter migrations are completed.
+
+### Login pages
+
+The local demo now starts at [volunteer-login.html](volunteer-login.html). Its offline-only credentials are `agent` / `agent`; [admin-login.html](admin-login.html) uses `admin` / `admin`. They are not database credentials and must never be used for a hosted project. With `FEATURE_DB=true`, both pages require a real invited Supabase email/password account; the admin page also verifies that the user is listed in `app_admins`.
+
 Categories, conditions, reading levels, and decisions are defined once as master data in `app.js`. Default Austin-area locations are predefined there as fictional seeds. Origin dropdowns use active collection locations, while current-location dropdowns use every active location saved for the drive.
 
 ## Phase 4 walkthrough

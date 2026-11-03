@@ -1,0 +1,2 @@
+-- Development-only seed data belongs here.
+-- Do not add the fictional browser-demo inventory to a hosted pilot automatically.

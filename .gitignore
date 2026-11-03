@@ -1,0 +1,20 @@
+# Local Supabase/browser configuration
+config.js
+.env
+.env.*
+!.env.example
+
+# Static hosting build output
+dist/
+
+# Local Supabase services and CLI artifacts
+supabase/.temp/
+
+# Operating system and editor files
+.DS_Store
+.vscode/
+npm-debug.log*
+
+# Dependency dir
+node_modules/
+.npm
