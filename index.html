@@ -24,6 +24,7 @@
         <button class="nav-button" data-view="dashboard" aria-current="page"><i class="nav-icon">⌂</i>Dashboard</button>
         <button class="nav-button" data-view="inventory"><i class="nav-icon">▤</i>Inventory</button>
         <button class="nav-button" data-view="receive"><i class="nav-icon">＋</i>Receive</button>
+        <button class="nav-button" data-view="locations"><i class="nav-icon">⌖</i>Locations</button>
         <button class="nav-button" data-view="boxes"><i class="nav-icon">□</i>Boxes</button>
         <button class="nav-button" data-view="setup"><i class="nav-icon">⚙</i>Setup</button>
       </nav>
@@ -60,7 +61,7 @@
       </section>
 
       <section class="view" id="inventory-view" aria-labelledby="inventory-title">
-        <div class="page-heading"><div><p class="eyebrow">Books</p><h1 id="inventory-title">Inventory</h1><p class="page-description">Filter, transfer, split, and classify every group of books.</p></div><button class="button primary" data-open-view="receive">+ Receive books</button></div>
+        <div class="page-heading"><div><p class="eyebrow">Books</p><h1 id="inventory-title">Inventory</h1><p class="page-description">Filter, transfer, split, and classify every group of books.</p></div><div class="box-actions" style="margin-top:0"><button class="button" id="reset-inventory" type="button">Reset</button><button class="button primary" data-open-view="receive">+ Receive books</button></div></div>
         <div class="toolbar">
           <input id="inventory-search" type="search" placeholder="Search title or category…" aria-label="Search inventory">
           <select id="filter-origin" aria-label="Filter by origin"><option value="">All origins</option></select>
@@ -78,10 +79,12 @@
           <form id="receive-form" novalidate>
             <div class="form-grid">
               <div class="field full"><label>Entry type</label><div class="mode-toggle"><button class="mode-button active" type="button" data-entry-mode="batch">Category batch</button><button class="mode-button" type="button" data-entry-mode="title">Individual title</button></div></div>
+              <div class="field full"><label for="receive-donar-name">Donar Name <span class="muted">(optional)</span></label><input id="receive-donar-name" name="donar_name" maxlength="120" placeholder="e.g. Jordan Lee"></div>
               <div class="field full" id="receive-title-field" hidden><label for="receive-title-input">Book title</label><input id="receive-title-input" name="title" maxlength="180" placeholder="e.g. The Wild Robot"></div>
               <div class="field"><label for="receive-category">Category</label><select id="receive-category" name="category"></select></div>
               <div class="field"><label for="receive-quantity">Quantity</label><input id="receive-quantity" name="quantity" type="number" min="1" step="1" value="1" required></div>
               <div class="field"><label for="receive-origin">Origin site</label><select id="receive-origin" name="origin_location_id" required></select></div>
+              <div class="field"><label for="receive-current">Current location</label><select id="receive-current" name="current_location_id" required></select></div>
               <div class="field"><label for="receive-condition">Condition</label><select id="receive-condition" name="condition"></select></div>
               <div class="field"><label for="receive-reading">Reading level</label><select id="receive-reading" name="reading_level"></select></div>
               <div class="field"><label for="receive-decision">Initial decision</label><select id="receive-decision" name="decision"></select></div>
@@ -90,6 +93,30 @@
             </div>
             <div class="form-actions"><button class="button" type="button" data-open-view="inventory">Cancel</button><button class="button" type="submit" data-save-mode="continue">Save and add another</button><button class="button primary" id="receive-save" type="submit" data-save-mode="close">Save books</button></div>
           </form>
+        </article>
+      </section>
+
+      <section class="view" id="locations-view" aria-labelledby="locations-title">
+        <div class="page-heading"><div><p class="eyebrow">Receiving lists</p><h1 id="locations-title">Origins &amp; locations</h1><p class="page-description">Add sites that volunteers can select when receiving books.</p></div></div>
+        <div class="dashboard-grid">
+          <article class="card">
+            <div class="card-header"><h2>Add origin</h2><p>Origins identify where donated books came from.</p></div>
+            <form id="origin-form" class="form-grid" novalidate>
+              <div class="field full"><label for="new-origin-name">Origin name</label><input id="new-origin-name" name="name" required maxlength="120" placeholder="e.g. Westlake High School"></div>
+              <div class="field full"><button class="button primary" id="add-origin" type="submit">Add origin</button></div>
+            </form>
+          </article>
+          <article class="card">
+            <div class="card-header"><h2>Add location</h2><p>Locations identify where books are currently being held.</p></div>
+            <form id="receiving-location-form" class="form-grid" novalidate>
+              <div class="field full"><label for="new-receiving-location-name">Location name</label><input id="new-receiving-location-name" name="name" required maxlength="120" placeholder="e.g. Westlake Library"></div>
+              <div class="field full"><button class="button primary" id="add-receiving-location" type="submit">Add location</button></div>
+            </form>
+          </article>
+        </div>
+        <article class="card" style="max-width:780px;margin-top:18px">
+          <div class="card-header"><h2>Available sites</h2><p>These saved values appear in the Receive books dropdowns.</p></div>
+          <div id="receiving-location-list"></div>
         </article>
       </section>
 
@@ -138,6 +165,7 @@
           <input id="import-inventory-csv-file" type="file" accept="text/csv,.csv" hidden>
           <input id="import-json-file" type="file" accept="application/json,.json" hidden>
           <div class="form-actions">
+            <button class="button" id="setup-mock-inventory" type="button">Setup</button>
             <button class="button" id="start-empty" type="button">Start empty</button>
             <button class="button" id="reset-sample" type="button">Reset sample data</button>
             <button class="button" id="download-recovery" type="button" hidden>Download malformed saved data</button>

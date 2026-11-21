@@ -12,7 +12,7 @@
   const SCHEMA_VERSION = 1;
   const ACTIVE_DRIVE_ID = 'drive-central-texas';
   const ACTOR_ID = 'demo';
-  const INVENTORY_IMPORT_HEADERS = ['entry_mode','title','category','quantity','origin_location','current_location','condition','reading_level','decision','rejection_reason','notes'];
+  const INVENTORY_IMPORT_HEADERS = ['entry_mode','title','category','quantity','origin_location','current_location','donar_name','condition','reading_level','decision','rejection_reason','notes'];
   const MASTER_DATA = Object.freeze({
     categories: [
       { value: 'storybooks', label: 'Storybooks' },
@@ -95,6 +95,7 @@
   function createEmptyState(baseState = createSampleState()) {
     const empty = clone(baseState);
     empty.revision = Number(baseState.revision || 0) + 1;
+    empty.locations = [];
     empty.entries = [];
     empty.boxes = [];
     empty.boxItems = [];
@@ -129,7 +130,7 @@
     if (new Set(boxLabels).size !== boxLabels.length) throw new Error('Box labels must be unique within a drive.');
     const linkedShipmentIds = candidate.boxes.filter(box => box.shipment_id).map(box => box.shipment_id);
     if (new Set(linkedShipmentIds).size !== linkedShipmentIds.length) throw new Error('A shipment cannot belong to more than one box.');
-    if (candidate.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.type === 'central' && location.active).length !== 1) throw new Error('The active drive must have exactly one central sorting location.');
+    if (candidate.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.type === 'central' && location.active).length > 1) throw new Error('The active drive can have only one central sorting location.');
     candidate.locations.forEach(location => { if (!driveIds.has(location.drive_id) || !location.name || !['collection', 'central'].includes(location.type) || typeof location.active !== 'boolean') throw new Error(`Location ${location.id} is invalid.`); });
     candidate.entries.forEach(entry => {
       const origin = byId(candidate.locations, entry.origin_location_id);
@@ -256,6 +257,9 @@
     receiveRejectionField: document.querySelector('#receive-rejection-field'),
     setupLocationList: document.querySelector('#setup-location-list'),
     locationForm: document.querySelector('#location-form'),
+    originForm: document.querySelector('#origin-form'),
+    receivingLocationForm: document.querySelector('#receiving-location-form'),
+    receivingLocationList: document.querySelector('#receiving-location-list'),
     inventoryModal: document.querySelector('#inventory-modal'),
     inventoryModalBody: document.querySelector('#inventory-modal-body'),
     inventoryModalTitle: document.querySelector('#inventory-modal-title'),
@@ -363,7 +367,7 @@
         id: uid('entry'), drive_id: ACTIVE_DRIVE_ID, origin_location_id: origin.id, current_location_id: current.id,
         entry_mode: mode, title: mode === 'title' ? record.title : '', category: resolveMasterValue(MASTER_DATA.categories, record.category, 'category', rowNumber), quantity,
         condition: resolveMasterValue(MASTER_DATA.conditions, record.condition, 'condition', rowNumber), reading_level: resolveMasterValue(MASTER_DATA.readingLevels, record.reading_level, 'reading_level', rowNumber), decision,
-        rejection_reason: decision === 'rejected' ? record.rejection_reason : '', parent_entry_id: null, notes: record.notes,
+        rejection_reason: decision === 'rejected' ? record.rejection_reason : '', parent_entry_id: null, donar_name: record.donar_name, notes: record.notes,
         version: 1, created_by: ACTOR_ID, created_at: timestamp, updated_at: timestamp
       };
     });
@@ -383,10 +387,10 @@
   }
 
   function exportInventoryCsv() {
-    const rows = [['Entry ID','Origin','Current location','Title','Category','Condition','Reading level','Decision','Rejection reason','Received quantity','Packed quantity','Shipped quantity','Box labels']];
+    const rows = [['Entry ID','Origin','Current location','Donar Name','Title','Category','Condition','Reading level','Decision','Rejection reason','Received quantity','Packed quantity','Shipped quantity','Box labels']];
     state.entries.forEach(entry => {
       const allocations = allocationsForEntry(entry.id), shippedAllocations = allocations.filter(item => byId(state.boxes, item.box_id)?.status === 'shipped');
-      rows.push([entry.id, locationName(entry.origin_location_id), locationName(entry.current_location_id), entry.title, entry.category, entry.condition, entry.reading_level, entry.decision, entry.rejection_reason, entry.quantity, allocations.reduce((n,item)=>n+item.quantity,0), shippedAllocations.reduce((n,item)=>n+item.quantity,0), allocations.map(item => byId(state.boxes,item.box_id)?.label).filter(Boolean).join(' | ')]);
+      rows.push([entry.id, locationName(entry.origin_location_id), locationName(entry.current_location_id), entry.donar_name || '', entry.title, entry.category, entry.condition, entry.reading_level, entry.decision, entry.rejection_reason, entry.quantity, allocations.reduce((n,item)=>n+item.quantity,0), shippedAllocations.reduce((n,item)=>n+item.quantity,0), allocations.map(item => byId(state.boxes,item.box_id)?.label).filter(Boolean).join(' | ')]);
     });
     downloadFile('donar-inventory.csv', csvDocument(rows), 'text/csv;charset=utf-8');
   }
@@ -410,7 +414,7 @@
       ['Packed ≤ accepted', metrics.packed <= metrics.accepted],
       ['Accepted ≤ received', metrics.accepted <= metrics.received],
       ['JSON round trip parses', Boolean(JSON.parse(JSON.stringify(candidate)))],
-      ['One active central sorting location', candidate.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.type === 'central' && location.active).length === 1],
+      ['At most one active central sorting location', candidate.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.type === 'central' && location.active).length <= 1],
       ['CSV formula prefixes are neutralized', safeCsvCell('=SUM(A1:A2)').startsWith('"\'')],
       ['HTML-like text is escaped', escapeHtml('<script>') === '&lt;script&gt;']
     ];
@@ -419,7 +423,7 @@
   }
 
   function formatAction(event) {
-    const labels = { csv_imported: 'Inventory CSV imported', shipped: 'Box marked shipped', shipment_reversed: 'Shipment reversed', box_created: 'New box created', packed: 'Books packed', unpacked: 'Books unpacked', box_ready: 'Box verified and ready', classified: 'The Wild Robot marked accepted', setup_updated: 'Drive setup updated', received: 'New books received', updated: 'Inventory updated', split_and_updated: 'Inventory split and updated', location_created: 'Collection location added' };
+    const labels = { csv_imported: 'Inventory CSV imported', shipped: 'Box marked shipped', shipment_reversed: 'Shipment reversed', box_created: 'New box created', packed: 'Books packed', unpacked: 'Books unpacked', box_ready: 'Box verified and ready', classified: 'The Wild Robot marked accepted', setup_updated: 'Drive setup updated', received: 'New books received', updated: 'Inventory updated', deleted: 'Inventory record deleted', inventory_reset: 'Inventory reset', mock_inventory_added: 'Mock inventory added', split_and_updated: 'Inventory split and updated', location_created: 'Collection location added', location_removed: 'Location removed' };
     return labels[event.action] || `${event.entity_type} ${event.action.replaceAll('_', ' ')}`;
   }
 
@@ -465,7 +469,7 @@
     });
     elements.inventoryTable.innerHTML = rows.length ? rows.map(entry => {
       const allocated = allocationsForEntry(entry.id).reduce((sum, item) => sum + item.quantity, 0);
-      return `<tr><td><strong>${escapeHtml(entry.title || `${entry.category} batch`)}</strong><small>${escapeHtml(entry.reading_level)} · ${escapeHtml(entry.condition)}${entry.parent_entry_id ? ' · split row' : ''}</small></td><td>${escapeHtml(locationName(entry.origin_location_id))}</td><td>${escapeHtml(locationName(entry.current_location_id))}</td><td>${entry.quantity}<small>${allocated ? `${allocated} packed` : ''}</small></td><td><span class="badge ${entry.decision}">${entry.decision}</span>${entry.rejection_reason ? `<small>${escapeHtml(entry.rejection_reason)}</small>` : ''}</td><td><button class="button small" type="button" data-manage-entry="${entry.id}">Manage</button></td></tr>`;
+      return `<tr><td><strong>${escapeHtml(entry.title || `${entry.category} batch`)}</strong><small>${escapeHtml(entry.reading_level)} · ${escapeHtml(entry.condition)}${entry.parent_entry_id ? ' · split row' : ''}</small></td><td>${escapeHtml(locationName(entry.origin_location_id))}</td><td>${escapeHtml(locationName(entry.current_location_id))}</td><td>${entry.quantity}<small>${allocated ? `${allocated} packed` : ''}</small></td><td><span class="badge ${entry.decision}">${entry.decision}</span>${entry.rejection_reason ? `<small>${escapeHtml(entry.rejection_reason)}</small>` : ''}</td><td><button class="button small" type="button" data-manage-entry="${entry.id}">Manage</button><button class="button small" type="button" data-delete-entry="${entry.id}" ${allocated ? 'disabled title="Unpack this record before deleting it"' : ''}>Delete</button></td></tr>`;
     }).join('') : '<tr><td colspan="6" class="muted" style="padding:32px;text-align:center">No inventory matches these filters.</td></tr>';
   }
 
@@ -480,8 +484,23 @@
     elements.driveForm.elements.goal_accepted_quantity.value = drive.goal_accepted_quantity ?? '';
     elements.driveForm.elements.destination_description.value = drive.destination_description;
     elements.driveForm.elements.guidance_text.value = drive.guidance_text;
-    elements.setupLocationList.innerHTML = state.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.active).map(location => `<div class="location-admin-row"><div><strong>${escapeHtml(location.name)}</strong><div class="muted">${location.type === 'central' ? 'Central sorting location' : 'Collection location'}</div></div><span class="badge ${location.type === 'central' ? 'accepted' : 'pending'}">${location.type}</span></div>`).join('');
+    elements.setupLocationList.innerHTML = state.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.active).map(location => {
+      const inventoryCount = state.entries.filter(entry => entry.origin_location_id === location.id || entry.current_location_id === location.id).length;
+      const cannotRemove = location.type === 'central' || inventoryCount > 0;
+      const reason = location.type === 'central' ? 'The active drive requires one central sorting location.' : inventoryCount ? `Used by ${inventoryCount} inventory record${inventoryCount === 1 ? '' : 's'}.` : '';
+      return `<div class="location-admin-row"><div><strong>${escapeHtml(location.name)}</strong><div class="muted">${location.type === 'central' ? 'Central sorting location' : 'Collection location'}${reason ? ` · ${reason}` : ''}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="badge ${location.type === 'central' ? 'accepted' : 'pending'}">${location.type}</span><button class="button small" type="button" data-remove-location="${location.id}" ${cannotRemove ? `disabled title="${escapeHtml(reason)}"` : ''}>Remove</button></div></div>`;
+    }).join('');
       elements.downloadRecovery.hidden = !repository.recoveryContent;
+  }
+
+  function renderReceivingLocations() {
+    const locations = state.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.active);
+    elements.receivingLocationList.innerHTML = locations.length
+      ? locations.map(location => {
+        const availability = location.type === 'central' || location.receiving_kind === 'location' ? 'a current location' : location.receiving_kind === 'origin' ? 'an origin' : 'an origin and current location';
+        return `<div class="location-admin-row"><div><strong>${escapeHtml(location.name)}</strong><div class="muted">Available as ${availability}</div></div><span class="badge ${location.type === 'central' ? 'accepted' : 'pending'}">${location.type}</span></div>`;
+      }).join('')
+      : '<div class="muted">No origins or locations have been added yet.</div>';
   }
 
   function replaceOptions(select, items, placeholder) {
@@ -493,10 +512,13 @@
   function renderSelectOptions() {
     const activeLocations = state.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.active).map(location => ({ value: location.id, label: location.name }));
     const collectionLocations = state.locations.filter(location => location.drive_id === ACTIVE_DRIVE_ID && location.active && location.type === 'collection').map(location => ({ value: location.id, label: location.name }));
+    const receiveOrigins = collectionLocations.filter(location => byId(state.locations, location.value)?.receiving_kind !== 'location');
+    const receiveLocations = activeLocations.filter(location => byId(state.locations, location.value)?.receiving_kind !== 'origin');
     replaceOptions(document.querySelector('#filter-origin'), collectionLocations, 'All origins');
     replaceOptions(document.querySelector('#filter-current'), activeLocations, 'All current locations');
     replaceOptions(document.querySelector('#filter-reading'), MASTER_DATA.readingLevels, 'All reading levels');
-    replaceOptions(document.querySelector('#receive-origin'), collectionLocations, 'Select an origin');
+    replaceOptions(document.querySelector('#receive-origin'), receiveOrigins, 'Select an origin');
+    replaceOptions(document.querySelector('#receive-current'), receiveLocations, 'Select a location');
     replaceOptions(document.querySelector('#receive-category'), MASTER_DATA.categories, '');
     replaceOptions(document.querySelector('#receive-condition'), MASTER_DATA.conditions, '');
     replaceOptions(document.querySelector('#receive-reading'), MASTER_DATA.readingLevels, '');
@@ -512,6 +534,7 @@
     renderInventory();
     renderBoxes();
     renderSetup();
+    renderReceivingLocations();
   }
 
   function showToast(message) {
@@ -566,6 +589,72 @@
     elements.boxModal.hidden = true;
     elements.boxModalBody.innerHTML = '';
     document.body.classList.remove('printing-manifest');
+  }
+
+  async function deleteInventoryEntry(entryId) {
+    const entry = byId(state.entries, entryId);
+    if (!entry) { showError('This inventory record no longer exists.'); return; }
+    if (allocationsForEntry(entryId).length) { showError('Unpack this inventory record before deleting it.'); return; }
+    const label = entry.title || `${entry.category} batch`;
+    if (!window.confirm(`Delete “${label}” (${entry.quantity} books)? This cannot be undone.`)) return;
+    const candidate = clone(state);
+    const removed = byId(candidate.entries, entryId);
+    candidate.entries = candidate.entries.filter(item => item.id !== entryId);
+    candidate.revision += 1;
+    candidate.changeEvents.push({ id: uid('event'), drive_id: entry.drive_id, entity_type: 'inventory_entry', entity_id: entryId, action: 'deleted', before_values: clone(removed), after_values: null, actor_id: ACTOR_ID, timestamp: nowIso() });
+    await commitCandidate(candidate, 'Inventory record deleted.');
+  }
+
+  async function resetInventory() {
+    if (!state.entries.length) { showToast('Inventory is already empty.'); return; }
+    if (!window.confirm('Reset all inventory records? This also clears book allocations and reopens affected boxes. This cannot be undone.')) return;
+    const candidate = clone(state);
+    const previousCount = candidate.entries.length;
+    candidate.entries = [];
+    candidate.boxItems = [];
+    candidate.boxes.forEach(box => {
+      box.status = 'open';
+      box.verified_quantity = null;
+      box.shipment_id = null;
+      box.version += 1;
+    });
+    candidate.shipments = [];
+    candidate.revision += 1;
+    candidate.changeEvents.push({ id: uid('event'), drive_id: ACTIVE_DRIVE_ID, entity_type: 'inventory', entity_id: ACTIVE_DRIVE_ID, action: 'inventory_reset', before_values: { entry_count: previousCount }, after_values: { entry_count: 0 }, actor_id: ACTOR_ID, timestamp: nowIso() });
+    await commitCandidate(candidate, 'All inventory records were reset.');
+  }
+
+  async function addMockInventory() {
+    const origin = state.locations.find(location => location.drive_id === ACTIVE_DRIVE_ID && location.active && location.type === 'collection' && location.receiving_kind !== 'location');
+    const current = state.locations.find(location => location.drive_id === ACTIVE_DRIVE_ID && location.active && location.type === 'central') || state.locations.find(location => location.drive_id === ACTIVE_DRIVE_ID && location.active && location.receiving_kind !== 'origin');
+    if (!origin || !current) { showError('Add an active collection origin and location before adding mock inventory.'); return; }
+    if (!window.confirm('Add three mock inventory book records to this drive?')) return;
+    const candidate = clone(state);
+    const timestamp = nowIso();
+    const mockBooks = [
+      { title: 'The Wild Robot', category: 'storybooks', quantity: 12, condition: 'good', reading_level: 'elementary', decision: 'accepted' },
+      { title: 'The Magic Tree House', category: 'storybooks', quantity: 18, condition: 'new', reading_level: 'elementary', decision: 'pending' },
+      { title: 'Young Readers Science Atlas', category: 'nonfiction', quantity: 8, condition: 'good', reading_level: 'middle school', decision: 'accepted' }
+    ];
+    const entries = mockBooks.map(book => ({ id: uid('entry'), drive_id: ACTIVE_DRIVE_ID, origin_location_id: origin.id, current_location_id: current.id, entry_mode: 'title', ...book, rejection_reason: '', parent_entry_id: null, donar_name: 'DONAR Demo', notes: 'Mock inventory record', version: 1, created_by: ACTOR_ID, created_at: timestamp, updated_at: timestamp }));
+    candidate.entries.push(...entries);
+    candidate.revision += 1;
+    candidate.changeEvents.push({ id: uid('event'), drive_id: ACTIVE_DRIVE_ID, entity_type: 'inventory', entity_id: ACTIVE_DRIVE_ID, action: 'mock_inventory_added', before_values: null, after_values: { entry_count: entries.length }, actor_id: ACTOR_ID, timestamp });
+    await commitCandidate(candidate, 'Three mock inventory books added.');
+  }
+
+  async function removeLocation(locationId) {
+    const location = byId(state.locations, locationId);
+    if (!location || location.drive_id !== ACTIVE_DRIVE_ID) { showError('This location no longer exists.'); return; }
+    if (location.type === 'central') { showError('The active central sorting location cannot be removed. Designate another central location first.'); return; }
+    const inventoryCount = state.entries.filter(entry => entry.origin_location_id === locationId || entry.current_location_id === locationId).length;
+    if (inventoryCount) { showError(`Cannot remove ${location.name}: it is used by ${inventoryCount} inventory record${inventoryCount === 1 ? '' : 's'}.`); return; }
+    if (!window.confirm(`Remove location “${location.name}”? This cannot be undone.`)) return;
+    const candidate = clone(state);
+    candidate.locations = candidate.locations.filter(item => item.id !== locationId);
+    candidate.revision += 1;
+    candidate.changeEvents.push({ id: uid('event'), drive_id: ACTIVE_DRIVE_ID, entity_type: 'location', entity_id: locationId, action: 'location_removed', before_values: clone(location), after_values: null, actor_id: ACTOR_ID, timestamp: nowIso() });
+    await commitCandidate(candidate, 'Location removed.');
   }
 
   function localDateString(date = new Date()) {
@@ -713,10 +802,10 @@
 
   function openResetDialog(kind) {
     const isEmpty = kind === 'empty';
-    showBoxModal(isEmpty ? 'Start with an empty drive?' : 'Restore fictional samples?', 'Replace complete state', `<div class="notice error-panel">This replaces every current entry, box, shipment, and history event. Export a backup first if you may need this data again.</div><div class="form-actions"><button class="button" type="button" id="backup-before-replace">Export current backup</button><button class="button" type="button" id="cancel-replace">Cancel</button><button class="button primary" type="button" id="confirm-replace">${isEmpty ? 'Start empty' : 'Reset samples'}</button></div>`);
+    showBoxModal(isEmpty ? 'Start with an empty drive?' : 'Restore fictional samples?', 'Replace complete state', `<div class="notice error-panel">${isEmpty ? 'This clears every saved location, inventory entry, box, shipment, and history event.' : 'This restores the complete mock inventory and locations, replacing all current records.'} Export a backup first if you may need this data again.</div><div class="form-actions"><button class="button" type="button" id="backup-before-replace">Export current backup</button><button class="button" type="button" id="cancel-replace">Cancel</button><button class="button primary" type="button" id="confirm-replace">${isEmpty ? 'Start empty' : 'Reset samples'}</button></div>`);
     document.querySelector('#backup-before-replace').addEventListener('click', exportJson);
     document.querySelector('#cancel-replace').addEventListener('click', closeBoxModal);
-    document.querySelector('#confirm-replace').addEventListener('click', async event => { event.target.disabled = true; await replaceCompleteState(isEmpty ? createEmptyState(state) : createSampleState(), isEmpty ? 'Empty walkthrough ready.' : 'Sample data restored.'); });
+    document.querySelector('#confirm-replace').addEventListener('click', async event => { event.target.disabled = true; await replaceCompleteState(isEmpty ? createEmptyState(state) : createSampleState(), isEmpty ? 'Empty drive ready: locations and inventory cleared.' : 'Mock inventory and locations restored.'); });
   }
 
   function openImportPreview(candidate) {
@@ -743,21 +832,27 @@
     if (!entry) return;
     const allocated = allocationsForEntry(entry.id).reduce((sum, item) => sum + item.quantity, 0);
     const shipped = allocationsForEntry(entry.id).some(item => byId(state.boxes, item.box_id)?.status === 'shipped');
-    const locationOptions = state.locations.filter(location => location.drive_id === entry.drive_id && location.active).map(location => `<option value="${location.id}" ${location.id === entry.current_location_id ? 'selected' : ''}>${escapeHtml(location.name)}</option>`).join('');
+    const originOptions = state.locations.filter(location => location.drive_id === entry.drive_id && location.active && location.type === 'collection' && location.receiving_kind !== 'location').map(location => `<option value="${location.id}" ${location.id === entry.origin_location_id ? 'selected' : ''}>${escapeHtml(location.name)}</option>`).join('');
+    const locationOptions = state.locations.filter(location => location.drive_id === entry.drive_id && location.active && location.receiving_kind !== 'origin').map(location => `<option value="${location.id}" ${location.id === entry.current_location_id ? 'selected' : ''}>${escapeHtml(location.name)}</option>`).join('');
     elements.inventoryModalTitle.textContent = entry.title || `${entry.category} batch`;
     elements.inventoryModalBody.innerHTML = `
-      <div class="notice">This row contains ${entry.quantity} books. Enter a smaller quantity to create a linked split row.</div>
+      <div class="notice">Edit this inventory record and save your changes.</div>
       ${allocated ? `<div class="notice error-panel">${allocated} books are packed${shipped ? ' and shipped' : ''}. Manage the box and unpack them before changing this row.</div>` : ''}
       <form id="manage-entry-form" novalidate>
         <div class="form-grid">
-          <div class="field"><label for="manage-quantity">Quantity to update</label><input id="manage-quantity" name="quantity" type="number" min="1" max="${entry.quantity}" step="1" value="${entry.quantity}" required></div>
+          ${entry.entry_mode === 'title' ? `<div class="field full"><label for="manage-title">Book title</label><input id="manage-title" name="title" maxlength="180" value="${escapeHtml(entry.title)}" required></div>` : ''}
+          <div class="field"><label for="manage-category">Category</label><select id="manage-category" name="category">${MASTER_DATA.categories.map(item => `<option value="${item.value}" ${item.value === entry.category ? 'selected' : ''}>${item.label}</option>`).join('')}</select></div>
+          <div class="field"><label for="manage-quantity">Quantity</label><input id="manage-quantity" name="quantity" type="number" min="1" step="1" value="${entry.quantity}" required></div>
+          <div class="field"><label for="manage-origin">Origin site</label><select id="manage-origin" name="origin_location_id">${originOptions}</select></div>
           <div class="field"><label for="manage-location">Current location</label><select id="manage-location" name="current_location_id">${locationOptions}</select></div>
           <div class="field"><label for="manage-condition">Condition</label><select id="manage-condition" name="condition">${MASTER_DATA.conditions.map(item => `<option value="${item.value}" ${item.value === entry.condition ? 'selected' : ''}>${item.label}</option>`).join('')}</select></div>
           <div class="field"><label for="manage-reading">Reading level</label><select id="manage-reading" name="reading_level">${MASTER_DATA.readingLevels.map(item => `<option value="${item.value}" ${item.value === entry.reading_level ? 'selected' : ''}>${item.label}</option>`).join('')}</select></div>
           <div class="field"><label for="manage-decision">Decision</label><select id="manage-decision" name="decision">${MASTER_DATA.decisions.map(item => `<option value="${item.value}" ${item.value === entry.decision ? 'selected' : ''}>${item.label}</option>`).join('')}</select></div>
           <div class="field" id="manage-rejection-field" ${entry.decision === 'rejected' ? '' : 'hidden'}><label for="manage-rejection">Rejection reason</label><input id="manage-rejection" name="rejection_reason" maxlength="240" value="${escapeHtml(entry.rejection_reason)}"></div>
+          <div class="field"><label for="manage-donar-name">Donar Name <span class="muted">(optional)</span></label><input id="manage-donar-name" name="donar_name" maxlength="120" value="${escapeHtml(entry.donar_name || '')}"></div>
+          <div class="field full"><label for="manage-notes">Notes <span class="muted">(optional)</span></label><textarea id="manage-notes" name="notes" maxlength="1000">${escapeHtml(entry.notes || '')}</textarea></div>
         </div>
-        <div class="form-actions"><button class="button" type="button" id="cancel-entry-update">Cancel</button><button class="button primary" type="submit" ${allocated ? 'disabled' : ''}>${entry.quantity > 1 ? 'Apply update or split' : 'Apply update'}</button></div>
+        <div class="form-actions"><button class="button" type="button" id="cancel-entry-update">Cancel</button><button class="button primary" type="submit" ${allocated ? 'disabled' : ''}>Save changes</button></div>
       </form>`;
     elements.inventoryModal.hidden = false;
     const form = document.querySelector('#manage-entry-form');
@@ -770,36 +865,36 @@
       const quantity = Number(data.get('quantity'));
       const decision = String(data.get('decision'));
       const rejectionReason = String(data.get('rejection_reason') || '').trim();
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > entry.quantity) { showError(`Enter a whole quantity from 1 to ${entry.quantity}.`); return; }
+      const title = String(data.get('title') || '').trim();
+      const originId = String(data.get('origin_location_id') || '');
+      const currentLocationId = String(data.get('current_location_id') || '');
+      if (!Number.isInteger(quantity) || quantity < 1) { showError('Enter a positive whole quantity.'); return; }
+      if (entry.entry_mode === 'title' && !title) { showError('Enter a title for this inventory record.'); return; }
+      if (!byId(state.locations, originId) || byId(state.locations, originId).type !== 'collection' || byId(state.locations, originId).receiving_kind === 'location') { showError('Select a valid collection origin.'); return; }
+      if (!byId(state.locations, currentLocationId) || byId(state.locations, currentLocationId).drive_id !== entry.drive_id || !byId(state.locations, currentLocationId).active || byId(state.locations, currentLocationId).receiving_kind === 'origin') { showError('Select a valid current location.'); return; }
       if (decision === 'rejected' && !rejectionReason) { showError('A rejection reason is required.'); return; }
       if (allocated) { showError('Packed inventory cannot be transferred, split, or reclassified.'); return; }
       const candidate = clone(state);
       const source = byId(candidate.entries, entry.id);
       const updates = {
-        current_location_id: String(data.get('current_location_id')),
+        origin_location_id: originId,
+        current_location_id: currentLocationId,
+        title: entry.entry_mode === 'title' ? title : '',
+        category: String(data.get('category')),
         condition: String(data.get('condition')),
         reading_level: String(data.get('reading_level')),
         decision,
         rejection_reason: decision === 'rejected' ? rejectionReason : '',
+        donar_name: String(data.get('donar_name') || '').trim(),
+        notes: String(data.get('notes') || '').trim(),
         updated_at: nowIso()
       };
-      const isSplit = quantity < source.quantity;
-      let affectedId = source.id;
-      if (isSplit) {
-        source.quantity -= quantity;
-        source.version += 1;
-        source.updated_at = nowIso();
-        const child = { ...clone(source), ...updates, id: uid('entry'), quantity, parent_entry_id: source.id, version: 1, created_at: nowIso(), updated_at: nowIso() };
-        candidate.entries.push(child);
-        affectedId = child.id;
-      } else {
-        Object.assign(source, updates, { version: source.version + 1 });
-      }
+      Object.assign(source, updates, { quantity, version: source.version + 1 });
       candidate.revision += 1;
-      candidate.changeEvents.push({ id: uid('event'), drive_id: entry.drive_id, entity_type: 'inventory_entry', entity_id: affectedId, action: isSplit ? 'split_and_updated' : 'updated', before_values: clone(entry), after_values: clone(byId(candidate.entries, affectedId)), actor_id: ACTOR_ID, timestamp: nowIso() });
+      candidate.changeEvents.push({ id: uid('event'), drive_id: entry.drive_id, entity_type: 'inventory_entry', entity_id: source.id, action: 'updated', before_values: clone(entry), after_values: clone(source), actor_id: ACTOR_ID, timestamp: nowIso() });
       const submitButton = form.querySelector('button[type="submit"]');
       submitButton.disabled = true;
-      const saved = await commitCandidate(candidate, isSplit ? 'Inventory split and updated.' : 'Inventory updated.');
+      const saved = await commitCandidate(candidate, 'Inventory updated.');
       if (saved) closeInventoryModal(); else submitButton.disabled = false;
     });
   }
@@ -811,6 +906,10 @@
   setReceiveMode('batch');
 
   document.querySelector('#receive-decision').addEventListener('change', event => { elements.receiveRejectionField.hidden = event.target.value !== 'rejected'; });
+  document.querySelector('#receive-origin').addEventListener('change', event => {
+    const current = document.querySelector('#receive-current');
+    if (!current.value) current.value = event.target.value;
+  });
 
   elements.receiveForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -820,11 +919,13 @@
     const title = String(data.get('title') || '').trim();
     const quantity = Number(data.get('quantity'));
     const originId = String(data.get('origin_location_id') || '');
+    const currentLocationId = String(data.get('current_location_id') || '');
     const decision = String(data.get('decision'));
     const rejectionReason = String(data.get('rejection_reason') || '').trim();
     if (mode === 'title' && !title) { showError('Enter a title for an individual-title entry.'); return; }
     if (!Number.isInteger(quantity) || quantity < 1) { showError('Quantity must be a positive whole number.'); return; }
-    if (!byId(state.locations, originId) || byId(state.locations, originId).type !== 'collection') { showError('Select a valid collection origin.'); return; }
+    if (!byId(state.locations, originId) || byId(state.locations, originId).type !== 'collection' || byId(state.locations, originId).receiving_kind === 'location') { showError('Select a valid collection origin.'); return; }
+    if (!byId(state.locations, currentLocationId) || byId(state.locations, currentLocationId).drive_id !== ACTIVE_DRIVE_ID || !byId(state.locations, currentLocationId).active || byId(state.locations, currentLocationId).receiving_kind === 'origin') { showError('Select a valid current location.'); return; }
     if (decision === 'rejected' && !rejectionReason) { showError('A rejection reason is required.'); return; }
     const similar = mode === 'title' && state.entries.some(entry => entry.entry_mode === 'title' && entry.origin_location_id === originId && entry.title.trim().toLowerCase() === title.toLowerCase());
     if (similar && !window.confirm('A similar title already exists for this origin. Add another donation anyway?')) return;
@@ -832,11 +933,11 @@
     [...elements.receiveForm.querySelectorAll('button[type="submit"]')].forEach(button => { button.disabled = true; });
     const candidate = clone(state);
     const entry = {
-      id: uid('entry'), drive_id: ACTIVE_DRIVE_ID, origin_location_id: originId, current_location_id: originId,
+      id: uid('entry'), drive_id: ACTIVE_DRIVE_ID, origin_location_id: originId, current_location_id: currentLocationId,
       entry_mode: mode, title: mode === 'title' ? title : '', category: String(data.get('category')), quantity,
       condition: String(data.get('condition')), reading_level: String(data.get('reading_level')), decision,
       rejection_reason: decision === 'rejected' ? rejectionReason : '', parent_entry_id: null,
-      notes: String(data.get('notes') || '').trim(), version: 1, created_by: ACTOR_ID, created_at: nowIso(), updated_at: nowIso()
+      donar_name: String(data.get('donar_name') || '').trim(), notes: String(data.get('notes') || '').trim(), version: 1, created_by: ACTOR_ID, created_at: nowIso(), updated_at: nowIso()
     };
     candidate.entries.push(entry);
     candidate.revision += 1;
@@ -858,9 +959,12 @@
   });
 
   elements.inventoryTable.addEventListener('click', event => {
-    const button = event.target.closest('[data-manage-entry]');
-    if (button) openInventoryModal(button.dataset.manageEntry);
+    const manageButton = event.target.closest('[data-manage-entry]');
+    const deleteButton = event.target.closest('[data-delete-entry]');
+    if (manageButton) openInventoryModal(manageButton.dataset.manageEntry);
+    if (deleteButton) deleteInventoryEntry(deleteButton.dataset.deleteEntry);
   });
+  document.querySelector('#reset-inventory').addEventListener('click', resetInventory);
   document.querySelector('#close-inventory-modal').addEventListener('click', closeInventoryModal);
   elements.inventoryModal.addEventListener('click', event => { if (event.target === elements.inventoryModal) closeInventoryModal(); });
   document.querySelector('#new-box').addEventListener('click', openCreateBox);
@@ -880,6 +984,7 @@
   document.querySelector('#export-json').addEventListener('click', exportJson);
   document.querySelector('#import-json').addEventListener('click', () => elements.importFile.click());
   document.querySelector('#run-self-checks').addEventListener('click', showAcceptanceResults);
+  document.querySelector('#setup-mock-inventory').addEventListener('click', addMockInventory);
   document.querySelector('#start-empty').addEventListener('click', () => openResetDialog('empty'));
   document.querySelector('#reset-sample').addEventListener('click', () => openResetDialog('sample'));
   elements.downloadRecovery.addEventListener('click', () => { if (repository.recoveryContent) downloadFile('donar-malformed-storage.txt', repository.recoveryContent, 'text/plain;charset=utf-8'); });
@@ -962,6 +1067,40 @@
     const saved = await commitCandidate(candidate, type === 'central' ? 'Central sorting location changed.' : 'Collection location added.');
     document.querySelector('#add-location').disabled = false;
     if (saved) elements.locationForm.reset();
+  });
+
+  elements.setupLocationList.addEventListener('click', event => {
+    const removeButton = event.target.closest('[data-remove-location]');
+    if (removeButton) removeLocation(removeButton.dataset.removeLocation);
+  });
+
+  async function addReceivingSite(form, button, label, receivingKind) {
+    const data = new FormData(form);
+    const name = String(data.get('name') || '').trim();
+    if (!name) { showError(`Enter a ${label.toLowerCase()} name.`); return; }
+    if (state.locations.some(location => location.drive_id === ACTIVE_DRIVE_ID && location.name.toLowerCase() === name.toLowerCase())) {
+      showError('A site with this name already exists.');
+      return;
+    }
+    const candidate = clone(state);
+    const location = { id: uid('loc'), drive_id: ACTIVE_DRIVE_ID, name, type: 'collection', receiving_kind: receivingKind, active: true };
+    candidate.locations.push(location);
+    candidate.revision += 1;
+    candidate.changeEvents.push({ id: uid('event'), drive_id: ACTIVE_DRIVE_ID, entity_type: 'location', entity_id: location.id, action: 'location_created', before_values: null, after_values: clone(location), actor_id: ACTOR_ID, timestamp: nowIso() });
+    button.disabled = true;
+    const saved = await commitCandidate(candidate, `${label} added.`);
+    button.disabled = false;
+    if (saved) form.reset();
+  }
+
+  elements.originForm.addEventListener('submit', event => {
+    event.preventDefault();
+    addReceivingSite(elements.originForm, document.querySelector('#add-origin'), 'Origin', 'origin');
+  });
+
+  elements.receivingLocationForm.addEventListener('submit', event => {
+    event.preventDefault();
+    addReceivingSite(elements.receivingLocationForm, document.querySelector('#add-receiving-location'), 'Location', 'location');
   });
 
   // Bootstrap
