@@ -231,6 +231,53 @@ async function saveWithSystemSqlite(dbPath, schemaSql, state) {
   }
 }
 
+export async function loadStateFromSqlite(options = {}) {
+  const dbPath = options.dbPath || defaultDbPath;
+  await mkdir(dirname(dbPath), { recursive: true });
+
+  let BetterSqlite3 = null;
+  try {
+    const mod = await import('better-sqlite3');
+    BetterSqlite3 = mod.default || mod;
+  } catch {
+    BetterSqlite3 = null;
+  }
+
+  if (!BetterSqlite3) {
+    throw new Error('better-sqlite3 is required to load state from SQLite');
+  }
+
+  const db = new BetterSqlite3(dbPath, { readonly: true });
+
+  const tables = ['drives', 'locations', 'inventory_entries', 'shipments', 'boxes', 'box_items', 'change_events'];
+  const result = {};
+  for (const tbl of tables) {
+    result[tbl] = db.prepare(`SELECT * FROM ${tbl}`).all();
+  }
+  db.close();
+
+  // Align field names and types to app state
+  const state = {
+    schemaVersion: 1,
+    drives: result.drives,
+    locations: result.locations.map(loc => ({
+      ...loc,
+      active: loc.active === 1 || loc.active === true
+    })),
+    entries: result.inventory_entries,
+    shipments: result.shipments,
+    boxes: result.boxes,
+    boxItems: result.box_items,
+    changeEvents: result.change_events.map(ev => ({
+      ...ev,
+      before_values: typeof ev.before_values === 'string' ? JSON.parse(ev.before_values) : ev.before_values,
+      after_values: typeof ev.after_values === 'string' ? JSON.parse(ev.after_values) : ev.after_values
+    }))
+  };
+
+  return { ok: true, state };
+}
+
 export async function saveStateToSqlite(state, options = {}) {
   const dbPath = options.dbPath || defaultDbPath;
   await mkdir(dirname(dbPath), { recursive: true });

@@ -423,6 +423,32 @@
     downloadFile('donar-full-backup.json', JSON.stringify({ ...clone(state), exportedAt: nowIso() }, null, 2), 'application/json');
   }
 
+  async function loadDatabaseFromSqlite() {
+    const loadButton = document.querySelector('#load-database');
+    if (loadButton) loadButton.disabled = true;
+    try {
+      showToast('Loading data from SQLite…');
+      const response = await fetch('/api/load-database');
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Could not load from SQLite database.');
+      }
+      // Replace current state with loaded state and re-render
+      state = data.state;
+      try {
+        await repository.save(state);
+      } catch (repoErr) {
+        console.warn('Repository cache warning:', repoErr);
+      }
+      render();
+      showToast('Database loaded successfully.');
+    } catch (error) {
+      showError(error.message || 'Error loading from SQLite database.');
+    } finally {
+      if (loadButton) loadButton.disabled = false;
+    }
+  }
+
   async function saveDatabaseToSqlite() {
     const saveButton = document.querySelector('#save-database');
     if (saveButton) saveButton.disabled = true;
@@ -437,7 +463,7 @@
       if (!response.ok || !data.ok) {
         throw new Error(data.error || 'Could not save to SQLite database.');
       }
-      showToast('Database successfully saved to SQLite.');
+      showToast('Database saved successfully.');
     } catch (error) {
       showError(error.message || 'Error saving to SQLite database.');
     } finally {
@@ -1091,6 +1117,7 @@
   document.querySelector('#export-inventory-csv').addEventListener('click', exportInventoryCsv);
   document.querySelector('#export-allocations-csv').addEventListener('click', exportAllocationsCsv);
   document.querySelector('#export-json').addEventListener('click', exportJson);
+  document.querySelector('#load-database')?.addEventListener('click', loadDatabaseFromSqlite);
   document.querySelector('#save-database')?.addEventListener('click', saveDatabaseToSqlite);
   document.querySelector('#import-json').addEventListener('click', () => elements.importFile.click());
   document.querySelector('#run-self-checks').addEventListener('click', showAcceptanceResults);

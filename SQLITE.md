@@ -174,3 +174,66 @@ SQLite needs persistent disk storage. A purely static host cannot run it. Deploy
 ## Security notes
 
 Do not expose the SQLite file over HTTP. Validate all API input, use parameterized SQL statements, protect write endpoints with authentication before deploying beyond a trusted local environment, and create regular backups of `data/donar.sqlite`.
+
+---
+
+## SQLite Terminal Commands
+
+You can inspect and query the `data/donar.sqlite` file directly from the terminal using the built‑in `sqlite3` CLI.
+
+```bash
+# Open the database (interactive prompt)
+sqlite3 data/donar.sqlite
+```
+
+Inside the prompt you can run common queries:
+
+```sql
+-- List all tables
+.tables
+
+-- Show schema for a table
+.schema drives
+
+-- Query drives
+SELECT id, name, created_at FROM drives;
+
+-- Show inventory entries with location names (JOIN example)
+SELECT e.id, e.title, e.quantity, l.name AS location
+FROM inventory_entries e
+JOIN locations l ON e.current_location_id = l.id;
+
+-- Export a table to CSV
+.headers on
+.mode csv
+.output inventory.csv
+SELECT * FROM inventory_entries;
+.output stdout  -- return to terminal output
+```
+
+To quit the prompt type `.quit` or press `Ctrl+D`.
+
+---
+
+## Installing DB Browser for SQLite
+
+A graphical viewer makes exploring the database easier. On macOS you can install it via Homebrew or download the app directly.
+
+**Homebrew**:
+```bash
+brew install --cask db-browser-for-sqlite
+```
+
+**Manual download**:
+1. Visit the official site: https://sqlitebrowser.org/dl/
+2. Download the macOS `.dmg` package.
+3. Open the DMG and drag **DB Browser for SQLite** to your Applications folder.
+
+Once installed, open `data/donar.sqlite` from the app to browse tables, run SQL, and export data as CSV/JSON.
+
+---
+
+## Further Reading
+
+For an overview of the entire project setup, see the main README:
+[README.md](README.md)

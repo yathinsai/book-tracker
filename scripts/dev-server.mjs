@@ -1,8 +1,9 @@
+// Development server for BookTracker
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { saveStateToSqlite } from './sqlite-store.mjs';
+import { saveStateToSqlite, loadStateFromSqlite } from './sqlite-store.mjs';
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const configuredRoot = process.env.STATIC_ROOT || '.';
@@ -25,9 +26,25 @@ if (staticRoot !== projectRoot && !staticRoot.startsWith(`${projectRoot}${sep}`)
   throw new Error('STATIC_ROOT must be inside the project directory.');
 }
 
+// Create HTTP server handling all requests
 const server = createServer(async (request, response) => {
+  // Parse request URL once per request
   const url = new URL(request.url || '/', `http://${host}:${port}`);
 
+  // ---------- Load Database Endpoint ----------
+  if (url.pathname === '/api/load-database' && request.method === 'GET') {
+    try {
+      const result = await loadStateFromSqlite();
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      response.end(JSON.stringify(result));
+    } catch (err) {
+      response.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      response.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return; // finished handling this request
+  }
+
+  // ---------- Save Database Endpoint ----------
   if (url.pathname === '/api/save-database') {
     if (request.method === 'OPTIONS') {
       response.writeHead(204, {
@@ -57,33 +74,30 @@ const server = createServer(async (request, response) => {
       try {
         const payload = JSON.parse(body);
         const result = await saveStateToSqlite(payload);
-        response.writeHead(200, {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        });
+        response.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         response.end(JSON.stringify(result));
       } catch (err) {
-        response.writeHead(400, {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        });
+        response.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         response.end(JSON.stringify({ ok: false, error: err.message }));
       }
     });
     return;
   }
 
+  // Only allow GET/HEAD for static file serving
   if (!['GET', 'HEAD'].includes(request.method || '')) {
     response.writeHead(405, { Allow: 'GET, HEAD' });
     response.end('Method not allowed');
     return;
   }
 
+  // ---------- Static File Serving ----------
   try {
-    const url = new URL(request.url || '/', `http://${host}:${port}`);
     const requestedPath = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
     const filePath = resolve(staticRoot, `.${requestedPath}`);
-    if (filePath !== staticRoot && !filePath.startsWith(`${staticRoot}${sep}`)) throw new Error('Path outside static root');
+    if (filePath !== staticRoot && !filePath.startsWith(`${staticRoot}${sep}`)) {
+      throw new Error('Path outside static root');
+    }
     const fileStats = await stat(filePath);
     if (!fileStats.isFile()) throw new Error('Not a file');
     const type = contentTypes[extname(filePath).toLowerCase()] || 'application/octet-stream';
