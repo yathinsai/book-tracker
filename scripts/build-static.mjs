@@ -7,7 +7,7 @@ await loadProjectEnv();
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const outputDirectory = resolve(projectRoot, 'dist');
-const requiredFiles = ['index.html', 'admin-login.html', 'volunteer-login.html', 'styles.css', 'app.js', 'auth.js', 'login.js', 'feature-flags.js'];
+const requiredFiles = ['index.html', 'admin-login.html', 'volunteer-login.html', 'styles.css', 'app.js', 'auth.js', 'login.js', 'preview.js', 'feature-flags.js'];
 const featureDb = process.env.FEATURE_DB === 'true';
 const requiredEnvironment = featureDb ? ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY'] : [];
 const missingEnvironment = requiredEnvironment.filter((name) => !process.env[name]?.trim());

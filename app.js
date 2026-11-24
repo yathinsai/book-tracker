@@ -413,88 +413,6 @@
     downloadFile('donar-inventory.csv', csvDocument(rows), 'text/csv;charset=utf-8');
   }
 
-  function buildInventoryPreviewHtml() {
-    const drive = activeDrive();
-    const metrics = calculateMetrics();
-    const rows = state.entries.filter(entry => entry.drive_id === ACTIVE_DRIVE_ID).map(entry => {
-      const bookOrCategory = String(entry.title || `${entry.category} batch`).toUpperCase();
-      const labelParts = [entry.reading_level, entry.condition].filter(Boolean);
-      if (entry.parent_entry_id) labelParts.push('split row');
-      const labelDetails = labelParts.join(' · ').toUpperCase();
-      const donarName = String(entry.donar_name || '—').toUpperCase();
-      const originName = String(locationName(entry.origin_location_id) || '').toUpperCase();
-      const currentName = String(locationName(entry.current_location_id) || '').toUpperCase();
-      const decision = String(entry.decision || '').toUpperCase();
-      return `<tr><td><strong>${escapeHtml(bookOrCategory)}</strong>${labelDetails ? `<small>${escapeHtml(labelDetails)}</small>` : ''}</td><td>${entry.quantity}</td><td>${escapeHtml(originName)}</td><td>${escapeHtml(currentName)}</td><td>${formatPrice(entry.price)}</td><td><strong>${escapeHtml(decision)}</strong></td><td>${escapeHtml(donarName)}</td></tr>`;
-    }).join('');
-    const driveName = escapeHtml(String(drive.name || '').toUpperCase());
-    const partnerName = escapeHtml(String(drive.partner_name || '').toUpperCase());
-    const destination = escapeHtml(String(drive.destination_description || '').toUpperCase());
-    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inventory Report – ${driveName}</title><style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#182b25;padding:32px 40px;background:#fff}
-h1{font-size:26px;text-transform:uppercase;margin:4px 0}
-.eyebrow{font-size:11px;font-weight:850;letter-spacing:.13em;text-transform:uppercase;color:#2d7a5f;margin-bottom:4px}
-.manifest-heading{text-align:center;padding-bottom:16px;margin-bottom:18px;border-bottom:2px solid #182b25}
-.manifest-heading div{text-transform:uppercase;color:#445950;margin-top:4px}
-.manifest-meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:14px;font-size:12px;color:#445950}
-.summary{margin-bottom:18px;font-size:13px;line-height:1.7}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{padding:9px 12px;background:#f2f7f4;color:#445950;font-size:10px;letter-spacing:.06em;text-align:left;text-transform:uppercase;border-bottom:1px solid #d1ddd8}
-td{padding:9px 12px;border-bottom:1px solid #e8eeeb;vertical-align:top}
-td small{display:block;color:#65756f;font-size:10px;margin-top:3px}
-tr:last-child td{border-bottom:none}
-strong{font-weight:700}
-.muted{color:#65756f}
-@media print{
-  body{padding:16px 20px}
-  @page{margin:16mm 14mm;size:A4 landscape}
-}
-</style></head><body>
-<header class="manifest-heading">
-  <p class="eyebrow">Book drive inventory</p>
-  <h1>${driveName}</h1>
-  ${partnerName ? `<div>${partnerName}</div>` : ''}
-  ${destination ? `<div>${destination}</div>` : ''}
-</header>
-<div class="manifest-meta">
-  <div><strong>Inventory report</strong> &nbsp;·&nbsp; ${state.entries.length} record${state.entries.length === 1 ? '' : 's'}</div>
-  <div>Generated: ${new Date().toLocaleString()}</div>
-</div>
-<p class="summary"><strong>Total books:</strong> ${metrics.received} &nbsp;&nbsp; <strong>Accepted:</strong> ${metrics.accepted} &nbsp;&nbsp; <strong>Pending:</strong> ${metrics.pending} &nbsp;&nbsp; <strong>Rejected:</strong> ${metrics.rejected}</p>
-<table>
-  <thead><tr><th>Book / category</th><th>Qty</th><th>Origin</th><th>Current location</th><th>Price</th><th>Decision</th><th>Donar name</th></tr></thead>
-  <tbody>${rows || '<tr><td colspan="7" class="muted">No inventory records yet.</td></tr>'}</tbody>
-</table>
-</body></html>`;
-  }
-
-  function openInventoryPreview() {
-    const drive = activeDrive();
-    const metrics = calculateMetrics();
-    const rows = state.entries.filter(entry => entry.drive_id === ACTIVE_DRIVE_ID).map(entry => {
-      const bookOrCategory = String(entry.title || `${entry.category} batch`).toUpperCase();
-      const labelParts = [entry.reading_level, entry.condition].filter(Boolean);
-      if (entry.parent_entry_id) labelParts.push('split row');
-      const labelDetails = labelParts.join(' · ').toUpperCase();
-      const donarName = String(entry.donar_name || '—').toUpperCase();
-      const originName = String(locationName(entry.origin_location_id) || '').toUpperCase();
-      const currentName = String(locationName(entry.current_location_id) || '').toUpperCase();
-      const decision = String(entry.decision || '').toUpperCase();
-      return `<tr><td><strong>${escapeHtml(bookOrCategory)}</strong>${labelDetails ? `<small>${escapeHtml(labelDetails)}</small>` : ''}</td><td>${entry.quantity}</td><td>${escapeHtml(originName)}</td><td>${escapeHtml(currentName)}</td><td>${formatPrice(entry.price)}</td><td><span style="font-size:15px;font-weight:600">${escapeHtml(decision)}</span></td><td>${escapeHtml(donarName)}</td></tr>`;
-    }).join('');
-    showBoxModal('Inventory preview', 'Book drive report', `<div class="manifest"><header class="manifest-heading"><p class="eyebrow">Book drive inventory</p><h1>${escapeHtml(String(drive.name || '').toUpperCase())}</h1><div>${escapeHtml(String(drive.partner_name || '').toUpperCase())}</div><div>${escapeHtml(String(drive.destination_description || '').toUpperCase())}</div></header><div class="manifest-meta"><div><strong>Inventory report</strong><br>${state.entries.length} record${state.entries.length === 1 ? '' : 's'}</div><div>Generated: ${new Date().toLocaleString()}</div></div><p><strong>Total books:</strong> ${metrics.received} &nbsp; <strong>Accepted:</strong> ${metrics.accepted} &nbsp; <strong>Pending:</strong> ${metrics.pending} &nbsp; <strong>Rejected:</strong> ${metrics.rejected}</p><div class="table-wrap"><table><thead><tr><th>Book / category</th><th>Quantity</th><th>Origin</th><th>Current location</th><th>Price</th><th>Decision</th><th>Donar name</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="muted">No inventory records yet.</td></tr>'}</tbody></table></div><div class="form-actions no-print"><button class="button" type="button" id="close-inventory-preview">Close</button><button class="button primary" type="button" id="open-preview-tab">Open for PDF</button></div></div>`, true);
-    document.querySelector('#close-inventory-preview').addEventListener('click', closeBoxModal);
-    document.querySelector('#open-preview-tab').addEventListener('click', () => {
-      const html = buildInventoryPreviewHtml();
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const tab = window.open(url, '_blank');
-      if (tab) tab.focus();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    });
-  }
-
   function exportAllocationsCsv() {
     const rows = [['Allocation ID','Box label','Entry ID','Title or category','Allocated quantity','Box status']];
     state.boxItems.forEach(item => { const box=byId(state.boxes,item.box_id), entry=byId(state.entries,item.inventory_entry_id); rows.push([item.id,box?.label,entry?.id,entry?.title||entry?.category,item.quantity,box?.status]); });
@@ -1126,7 +1044,26 @@ strong{font-weight:700}
   document.addEventListener('keydown', event => { if (event.key === 'Escape') { if (!elements.inventoryModal.hidden) closeInventoryModal(); if (!elements.boxModal.hidden) closeBoxModal(); } });
   window.addEventListener('afterprint', () => document.body.classList.remove('printing-manifest'));
   document.querySelector('#download-inventory-template').addEventListener('click', downloadInventoryTemplate);
-  document.querySelector('#preview-inventory').addEventListener('click', openInventoryPreview);
+  // Modular inventory preview component
+  const bindPreview = mod => mod.initPreview({
+    activeDrive,
+    calculateMetrics,
+    getEntries: () => state.entries,
+    locationName,
+    escapeHtml,
+    formatPrice,
+    showBoxModal,
+    closeBoxModal,
+    ACTIVE_DRIVE_ID,
+    button: '#preview-inventory',
+  });
+  if (window.BookTrackerPreview) {
+    bindPreview(window.BookTrackerPreview);
+  } else {
+    import('./preview.js').then(bindPreview).catch(error => {
+      console.error('Failed to load preview module:', error);
+    });
+  }
   document.querySelector('#upload-inventory-csv').addEventListener('click', () => elements.importInventoryCsvFile.click());
   document.querySelector('#export-inventory-csv').addEventListener('click', exportInventoryCsv);
   document.querySelector('#export-allocations-csv').addEventListener('click', exportAllocationsCsv);
