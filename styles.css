@@ -166,7 +166,7 @@ button:focus-visible { outline: 3px solid rgba(23, 107, 80, .2); outline-offset:
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: fixed; inset: auto 0 0; z-index: 20; width: auto; height: auto; padding: 7px; border-top: 1px solid var(--line); border-right: 0; }
   .brand, .phase-label { display: none; }
-  .nav-list { grid-template-columns: repeat(5, 1fr); }
+  .nav-list { grid-template-columns: repeat(8, 1fr); overflow-x: auto; }
   .nav-button { display: grid; justify-items: center; gap: 1px; padding: 6px; font-size: 10px; }
   .nav-icon { font-size: 17px; }
   main { padding: 20px 16px 92px; }

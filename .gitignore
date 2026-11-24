@@ -18,3 +18,8 @@ npm-debug.log*
 # Dependency dir
 node_modules/
 .npm
+
+# SQLite database files
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal

@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { saveStateToSqlite } from './sqlite-store.mjs';
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const configuredRoot = process.env.STATIC_ROOT || '.';
@@ -25,6 +26,53 @@ if (staticRoot !== projectRoot && !staticRoot.startsWith(`${projectRoot}${sep}`)
 }
 
 const server = createServer(async (request, response) => {
+  const url = new URL(request.url || '/', `http://${host}:${port}`);
+
+  if (url.pathname === '/api/save-database') {
+    if (request.method === 'OPTIONS') {
+      response.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      });
+      response.end();
+      return;
+    }
+
+    if (request.method !== 'POST') {
+      response.writeHead(405, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ ok: false, error: 'Method not allowed' }));
+      return;
+    }
+
+    let body = '';
+    request.on('data', chunk => {
+      body += chunk;
+      if (body.length > 50 * 1024 * 1024) {
+        request.destroy();
+      }
+    });
+
+    request.on('end', async () => {
+      try {
+        const payload = JSON.parse(body);
+        const result = await saveStateToSqlite(payload);
+        response.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        response.end(JSON.stringify(result));
+      } catch (err) {
+        response.writeHead(400, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        response.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
   if (!['GET', 'HEAD'].includes(request.method || '')) {
     response.writeHead(405, { Allow: 'GET, HEAD' });
     response.end('Method not allowed');

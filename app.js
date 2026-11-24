@@ -423,6 +423,28 @@
     downloadFile('donar-full-backup.json', JSON.stringify({ ...clone(state), exportedAt: nowIso() }, null, 2), 'application/json');
   }
 
+  async function saveDatabaseToSqlite() {
+    const saveButton = document.querySelector('#save-database');
+    if (saveButton) saveButton.disabled = true;
+    try {
+      showToast('Saving data to SQLite…');
+      const response = await fetch('/api/save-database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state)
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Could not save to SQLite database.');
+      }
+      showToast('Database successfully saved to SQLite.');
+    } catch (error) {
+      showError(error.message || 'Error saving to SQLite database.');
+    } finally {
+      if (saveButton) saveButton.disabled = false;
+    }
+  }
+
   function runAcceptanceChecks(candidate = state) {
     validateStateEnvelope(clone(candidate));
     const metrics = calculateMetrics(candidate);
@@ -579,8 +601,9 @@
 
   // Navigation and interaction controllers
   function switchView(name) {
+    if (!name) return;
     document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === `${name}-view`));
-    document.querySelectorAll('.nav-button').forEach(button => button.setAttribute('aria-current', button.dataset.view === name ? 'page' : 'false'));
+    document.querySelectorAll('.nav-button[data-view]').forEach(button => button.setAttribute('aria-current', button.dataset.view === name ? 'page' : 'false'));
     document.querySelector(`#${name}-view h1`)?.focus({ preventScroll: true });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -952,7 +975,7 @@
   }
 
   // Event bindings
-  document.querySelectorAll('.nav-button').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
+  document.querySelectorAll('.nav-button[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
   document.querySelectorAll('[data-open-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.openView)));
   document.querySelectorAll('[data-entry-mode]').forEach(button => button.addEventListener('click', () => setReceiveMode(button.dataset.entryMode)));
   setReceiveMode('batch');
@@ -1068,6 +1091,7 @@
   document.querySelector('#export-inventory-csv').addEventListener('click', exportInventoryCsv);
   document.querySelector('#export-allocations-csv').addEventListener('click', exportAllocationsCsv);
   document.querySelector('#export-json').addEventListener('click', exportJson);
+  document.querySelector('#save-database')?.addEventListener('click', saveDatabaseToSqlite);
   document.querySelector('#import-json').addEventListener('click', () => elements.importFile.click());
   document.querySelector('#run-self-checks').addEventListener('click', showAcceptanceResults);
   document.querySelector('#setup-mock-inventory').addEventListener('click', addMockInventory);
