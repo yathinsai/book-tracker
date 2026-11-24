@@ -114,6 +114,7 @@ input, select, textarea {
   box-shadow: 0 1px 2px rgba(24, 53, 45, .04), inset 0 1px 0 rgba(255, 255, 255, .7);
   transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
 }
+input[type="text"], textarea { text-transform: uppercase; }
 select {
   appearance: none;
   padding-right: 40px;

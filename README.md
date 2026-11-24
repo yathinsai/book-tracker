@@ -149,7 +149,7 @@ Categories, conditions, reading levels, and decisions are defined once as master
 
 The template columns are:
 
-`entry_mode,title,category,quantity,origin_location,current_location,donar_name,condition,reading_level,decision,rejection_reason,notes`
+`entry_mode,title,category,quantity,price,origin_location,current_location,donar_name,condition,reading_level,decision,rejection_reason,notes`
 
 Use exact active location names or IDs. `current_location` may be blank to default to the origin. Master-data values may use their stored value or displayed label. CSV import appends inventory only; it does not import packing or shipment records.
 
