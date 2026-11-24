@@ -61,7 +61,17 @@
       </section>
 
       <section class="view" id="inventory-view" aria-labelledby="inventory-title">
-        <div class="page-heading"><div><p class="eyebrow">Books</p><h1 id="inventory-title">Inventory</h1><p class="page-description">Filter, transfer, split, and classify every group of books.</p></div><div class="box-actions" style="margin-top:0"><button class="button" id="reset-inventory" type="button">Reset</button><button class="button primary" data-open-view="receive">+ Receive books</button></div></div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Books</p>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <h1 id="inventory-title">Inventory</h1>
+              <span class="inventory-count-badge filter-count" id="inventory-filter-count" aria-live="polite"></span>
+            </div>
+            <p class="page-description">Filter, transfer, split, and classify every group of books.</p>
+          </div>
+          <div class="box-actions" style="margin-top:0"><button class="button" id="reset-inventory" type="button">Reset</button><button class="button primary" data-open-view="receive">+ Receive books</button></div>
+        </div>
         <div class="toolbar">
           <input id="inventory-search" type="search" placeholder="Search title or category…" aria-label="Search inventory">
           <select id="filter-origin" aria-label="Filter by origin"><option value="">All origins</option></select>
